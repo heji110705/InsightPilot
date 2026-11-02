@@ -1,0 +1,183 @@
+version: 1
+# 语义层表卡片。写作原则：meaning 与 synonyms 里必须出现业务同学真实会说的词
+# （书/读者/打分/点了/加入书架），因为这两处会直接进 BM25 索引；
+# caveats 只留"不写就会算错"的硬约束，控制在 5 条以内，避免卡片过长拖累召回。
+tables:
+  - name: dim_book
+    grain: 一行一本书（250 行）
+    meaning: "书籍维度表（书目主数据）。一行一本图书，含书名、作者、出版社、出版年份、分类/题材、定价、页数、装帧，以及站内评分（rating_avg/rating_count）与豆瓣评分（douban_rating/douban_votes）。查书目、查价格、查分类、查出版社、给每本书排名都从这张表出发。"
+    columns:
+      - {name: book_id, type: INTEGER, meaning: 书籍唯一标识, synonyms: [书, 图书, 书目]}
+      - {name: title, type: TEXT, meaning: 书名, synonyms: [书名, 标题, 哪本书]}
+      - {name: author_id, type: INTEGER, meaning: 作者ID，2 本为空, synonyms: [作者]}
+      - {name: author_name, type: TEXT, meaning: 作者姓名，已冗余，单表查作者不必 JOIN, synonyms: [作者, 作家, 谁写的]}
+      - {name: publisher, type: TEXT, meaning: 出版社，未归一化, synonyms: [出版社, 出版方, 哪家出的]}
+      - {name: pub_year, type: INTEGER, meaning: 出版年份 1962-2024, synonyms: [出版年份, 出版年, 哪年出版]}
+      - {name: price, type: REAL, meaning: 定价（元），有脏值与 NULL, synonyms: [价格, 定价, 书价, 多少钱]}
+      - {name: category, type: TEXT, meaning: 分类/题材，12 个取值, synonyms: [分类, 类型, 题材, 品类, 哪类书]}
+      - {name: pages, type: INTEGER, meaning: 页数, synonyms: [页数, 厚度]}
+      - {name: binding, type: TEXT, meaning: 装帧，取值不干净, synonyms: [装帧, 平装, 精装]}
+      - {name: rating_avg, type: REAL, meaning: 站内平均评分 0-10, synonyms: [评分, 打分, 分数]}
+      - {name: rating_count, type: INTEGER, meaning: 站内评分人数 6-29, synonyms: [评分人数, 多少人打分]}
+      - {name: douban_rating, type: REAL, meaning: 豆瓣评分 0-10，不同源, synonyms: [豆瓣评分, 豆瓣分]}
+      - {name: douban_votes, type: INTEGER, meaning: 豆瓣评价人数，十万级, synonyms: [豆瓣人数]}
+      - {name: topic, type: INTEGER, meaning: LDA 主题编号 0-11，无业务含义, synonyms: [主题]}
+      - {name: sentiment_score, type: REAL, meaning: 评论情感均值 -1..1, synonyms: [情感, 口碑]}
+      - {name: positive_rate, type: REAL, meaning: 正向评论占比 0..1, synonyms: [好评率, 正面占比]}
+    caveats:
+      - rating_avg 与 douban_rating 都是 0-10 分但不同源，不可混用或相加；豆瓣系统性偏高（196/250 本更高，均值差 0.47）
+      - price 有 0.2 元这类脏值和 1 条 NULL，算均价前先 WHERE price > 1
+      - category 极不均衡（文学小说 139 本、语言文化 1 本），小分类的均值/比率没有统计意义
+      - publisher 未归一化，存在"广州出版社 花城出版社"这类合并写法；按社比较均值要加 HAVING COUNT(*) >= 5
+      - 2 本书 author_id 为空，JOIN dim_author 会丢行，要保留全部书用 LEFT JOIN
+    joins:
+      - dim_book.book_id = fact_rating.book_id
+      - dim_book.book_id = fact_comment.book_id
+      - dim_book.book_id = fact_click.book_id
+      - dim_book.book_id = fact_shelf.book_id
+      - dim_book.author_id = dim_author.author_id
+
+  - name: dim_author
+    grain: 一行一位作者（197 行）
+    meaning: "作者维度表（作者档案）。一行一位作者/作家，含姓名与生卒年。dim_book 已冗余 author_name，只查作者名不必 JOIN；查作者档案或对作者去重计数才用这张表。"
+    columns:
+      - {name: author_id, type: INTEGER, meaning: 作者唯一标识, synonyms: [作者ID]}
+      - {name: name, type: TEXT, meaning: 姓名，含"(清)曹雪芹"这类前缀, synonyms: [姓名, 作者名, 作家名]}
+      - {name: life, type: TEXT, meaning: 生卒年自由文本，大量为空, synonyms: [生卒年]}
+    caveats:
+      - 本表 197 位作者，书目里只出现 184 位（13 位名下无书），"有多少作者"两个答案都对，看问的是档案还是出书作者
+      - 2 本书 author_id 为空，INNER JOIN 会丢这 2 本
+      - life 是自由文本（1904-1997 / ?-1763 / 空串），不能当数值年份运算
+    joins:
+      - dim_author.author_id = dim_book.author_id
+
+  - name: dim_date
+    grain: 一行一个自然日（15 行，2026-10-18 ~ 2026-11-01）
+    meaning: "日期维度表（日历）。一行一天，含年/季/月/日/星期（weekday 0=周一）/是否周末。用于把事实表日期列映射成星期几、周末属性；不覆盖更早的历史。"
+    columns:
+      - {name: date_key, type: TEXT, meaning: 日期主键 YYYY-MM-DD, synonyms: [日期, 哪天]}
+      - {name: year, type: INTEGER, meaning: 年份, synonyms: [年份]}
+      - {name: quarter, type: INTEGER, meaning: 季度, synonyms: [季度]}
+      - {name: month, type: INTEGER, meaning: 月份, synonyms: [月份]}
+      - {name: day, type: INTEGER, meaning: 几号, synonyms: [几号]}
+      - {name: weekday, type: INTEGER, meaning: 星期，0=周一, synonyms: [星期, 周几]}
+      - {name: weekday_cn, type: TEXT, meaning: 中文星期, synonyms: [星期几]}
+      - {name: is_weekend, type: INTEGER, meaning: 是否周末 1/0, synonyms: [周末, 工作日]}
+    caveats:
+      - 只有 15 天，任何"上个月/去年/近半年"的问题都取不到数
+      - 事实表里只有 fact_click 跨天（10-18 与 11-01 两天）；评分、评论、收藏都只有 2026-10-18 单日
+      - weekday 0 是周一不是周日（SQLite strftime('%w') 0 是周日），混用会整体错一天
+      - 两天都是周日，按星期分组只能得到一行，没有分析价值
+    joins:
+      - dim_date.date_key = fact_click.clicked_on
+      - dim_date.date_key = fact_rating.rated_on
+      - dim_date.date_key = fact_comment.created_on
+      - dim_date.date_key = fact_shelf.created_on
+
+  - name: fact_rating
+    grain: 一行一条评分（4202 行，一个用户对一本书只有一条）
+    meaning: "评分事实表（打分流水）。一行是某用户给某本书打的一次分，score 为 0-10 分。算评分次数、评分人数、好评率、人均打分都用这张表。"
+    columns:
+      - {name: rating_id, type: INTEGER, meaning: 评分记录主键, synonyms: [评分ID]}
+      - {name: book_id, type: INTEGER, meaning: 被评分的书, synonyms: [书]}
+      - {name: user_id, type: INTEGER, meaning: 打分用户, synonyms: [用户, 读者]}
+      - {name: score, type: REAL, meaning: 评分值 0-10，一位小数，不是 1-5 星, synonyms: [分数, 评分, 打分, 几星]}
+      - {name: rated_on, type: TEXT, meaning: 评分日期，全部 2026-10-18, synonyms: [评分日期]}
+      - {name: rated_at, type: TEXT, meaning: 评分时间戳, synonyms: [评分时间]}
+    caveats:
+      - score 是 0-10 分；把 4 星当 score>=4 会得到 99.7% 的假好评率，正确阈值是 8
+      - 全表只有 2026-10-18 一天，不能做趋势、同比、环比
+      - 当前 (user_id, book_id) 无重复，但"评分人数"仍应写 COUNT(DISTINCT user_id)
+      - AVG(score) 按评分条数加权，AVG(dim_book.rating_avg) 按书等权，两者结果不同
+    joins:
+      - fact_rating.book_id = dim_book.book_id
+      - fact_rating.rated_on = dim_date.date_key
+
+  - name: fact_comment
+    grain: 一行一条书评（1976 行）
+    meaning: "评论事实表（书评流水）。一行一条用户书评，含情感分 sentiment（-1..1）、情感极性 polarity（pos/neu/neg）、正文长度。算评论数、评论情感、正向评论占比、谁被讨论得最多用它。"
+    columns:
+      - {name: comment_id, type: INTEGER, meaning: 评论主键, synonyms: [评论ID]}
+      - {name: book_id, type: INTEGER, meaning: 被评论的书, synonyms: [书]}
+      - {name: user_id, type: INTEGER, meaning: 评论用户, synonyms: [用户]}
+      - {name: sentiment, type: REAL, meaning: 情感分 -1 到 1, synonyms: [情感, 情绪, 正负面]}
+      - {name: polarity, type: TEXT, meaning: 极性，只有 pos/neu/neg, synonyms: [极性, 好评差评]}
+      - {name: content_len, type: INTEGER, meaning: 正文长度 9-73 字, synonyms: [评论长度, 字数]}
+      - {name: created_on, type: TEXT, meaning: 评论日期，全部 2026-10-18, synonyms: [评论日期]}
+      - {name: created_at, type: TEXT, meaning: 评论时间戳, synonyms: [评论时间]}
+    caveats:
+      - polarity 只有 pos/neu/neg，没有 positive/negative 写法
+      - 正向占比的分母要声明：含 neu（89.4%）还是只算 pos+neg（94.7%）
+      - 1767/1976 是 pos，情感极度偏正，用平均情感比较书籍区分度很低
+      - 有 1 本书零评论，按书统计要用 LEFT JOIN；评论日期只有一天，做不了趋势
+    joins:
+      - fact_comment.book_id = dim_book.book_id
+      - fact_comment.created_on = dim_date.date_key
+
+  - name: fact_click
+    grain: 一行一次曝光或点击事件（9028 行）
+    meaning: "点击与曝光事实表（流量流水）。一行是一次展示（event=expose）或一次点击（event=click）。算点击量、曝光量、点击率、浏览量、热度、谁被点得最多都用这张表，但必须先按 event 过滤。"
+    columns:
+      - {name: click_id, type: INTEGER, meaning: 事件主键, synonyms: [点击ID]}
+      - {name: book_id, type: INTEGER, meaning: 被曝光/被点击的书, synonyms: [书]}
+      - {name: user_id, type: INTEGER, meaning: 触发事件的用户, synonyms: [用户, 访客]}
+      - {name: event, type: TEXT, meaning: 事件类型，只有 click(5001)/expose(4027), synonyms: [事件, 点击, 曝光, 浏览, 点了, 被点, 点几次]}
+      - {name: clicked_on, type: TEXT, meaning: 日期，只有 2026-10-18 和 2026-11-01, synonyms: [点击日期, 哪天]}
+      - {name: clicked_at, type: TEXT, meaning: 时间戳, synonyms: [点击时间]}
+    caveats:
+      - 全表 9028 = 5001 click + 4027 expose；点击数必须 WHERE event='click'，否则虚高 80%
+      - 口语说的浏览/热度只有 click 与 expose 两种事件，把 expose 当浏览、click 当点击是唯一映射
+      - 一行一次事件，同一用户可重复点同一本书；"多少人看过"要 COUNT(DISTINCT user_id)
+      - 只有两天且都是周日，不能做星期规律；与收藏表直接 JOIN 会 1:N×1:N 放大，须先各自预聚合
+    joins:
+      - fact_click.book_id = dim_book.book_id
+      - fact_click.clicked_on = dim_date.date_key
+
+  - name: fact_shelf
+    grain: 一行一条加入书架记录（2532 行）
+    meaning: "书架与收藏事实表。一行是某用户把某本书加入书架的一次记录，status 为 want（想读）/reading（在读）/read（读完）。算收藏数、想读人数、在读人数、读完数用它；收藏数也常被当作「受欢迎 / 最火」的代理指标。"
+    columns:
+      - {name: shelf_id, type: INTEGER, meaning: 记录主键, synonyms: [收藏ID]}
+      - {name: book_id, type: INTEGER, meaning: 被收藏的书, synonyms: [书]}
+      - {name: user_id, type: INTEGER, meaning: 收藏用户, synonyms: [用户, 读者]}
+      - {name: status, type: TEXT, meaning: 书架状态 want(276)/reading(651)/read(1605), synonyms: [状态, 想读, 在读, 读完]}
+      - {name: created_on, type: TEXT, meaning: 加入日期，全部 2026-10-18, synonyms: [收藏日期]}
+      - {name: updated_on, type: TEXT, meaning: 状态更新日期, synonyms: [更新时间]}
+    caveats:
+      - status 取值是 want/reading/read，不是 wish；写 wish 会查出 0 行
+      - 收藏数默认是全部状态（2532），不等于想读人数（276）
+      - 250 本书每本都至少被收藏一次，"有点击且有收藏的书占比"恒为 100%
+      - 日期只有一天，做不了状态流转时长
+    joins:
+      - fact_shelf.book_id = dim_book.book_id
+      - fact_shelf.created_on = dim_date.date_key
+
+  - name: v_book_overview
+    grain: 一行一本书（250 行），四张事实表预聚合后的宽表
+    meaning: "书籍全景宽表视图。把每本书的评分条数、评分均值、评论条数、情感均值、点击次数、收藏次数预先按 book_id 聚合好拼到书目上，一行仍是一本书。做「评分高但没人看」「叫好不叫座」「互动结构对比」这类跨事实表的问题优先用它，可避开 JOIN 放大。"
+    columns:
+      - {name: book_id, type: INTEGER, meaning: 书籍ID, synonyms: [书]}
+      - {name: title, type: TEXT, meaning: 书名, synonyms: [书名]}
+      - {name: author_name, type: TEXT, meaning: 作者, synonyms: [作者]}
+      - {name: publisher, type: TEXT, meaning: 出版社, synonyms: [出版社]}
+      - {name: pub_year, type: INTEGER, meaning: 出版年份, synonyms: [出版年份]}
+      - {name: category, type: TEXT, meaning: 分类, synonyms: [分类, 题材]}
+      - {name: price, type: REAL, meaning: 定价, synonyms: [价格, 定价]}
+      - {name: pages, type: INTEGER, meaning: 页数, synonyms: [页数]}
+      - {name: rating_avg, type: REAL, meaning: 站内平均评分 0-10, synonyms: [评分]}
+      - {name: rating_count, type: INTEGER, meaning: 站内评分人数, synonyms: [评分人数]}
+      - {name: douban_rating, type: REAL, meaning: 豆瓣评分 0-10, synonyms: [豆瓣评分]}
+      - {name: douban_votes, type: INTEGER, meaning: 豆瓣评价人数, synonyms: [豆瓣人数]}
+      - {name: rating_cnt, type: INTEGER, meaning: 事实表评分条数, synonyms: [评分条数]}
+      - {name: rating_score_avg, type: REAL, meaning: 评分均值 0-10, synonyms: [评分均值]}
+      - {name: comment_cnt, type: INTEGER, meaning: 评论条数，无评论为 0, synonyms: [评论数, 书评数]}
+      - {name: sentiment_avg, type: REAL, meaning: 评论情感均值 -1..1, synonyms: [情感均值, 口碑]}
+      - {name: click_cnt, type: INTEGER, meaning: 点击事件数（含 expose 曝光）, synonyms: [点击数, 热度, 曝光]}
+      - {name: shelf_cnt, type: INTEGER, meaning: 收藏次数, synonyms: [收藏数, 书架数]}
+    caveats:
+      - click_cnt 含 expose，是曝光加点击的总量，不是纯点击；要纯点击回 fact_click 加 event='click'
+      - rating_cnt（事实表）与 rating_count（维度表）是两套口径，本数据一致但不要重复相加
+      - 视图已预聚合，可以直接 WHERE / GROUP BY，但不要再 JOIN 事实表明细
+      - 1 本书零评论，comment_cnt=0 且 sentiment_avg 为 NULL，AVG 会自动忽略
+    joins:
+      - v_book_overview.book_id = dim_book.book_id

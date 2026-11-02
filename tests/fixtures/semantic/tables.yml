@@ -1,0 +1,52 @@
+version: 1
+tables:
+  - name: dim_book
+    grain: 一行一本书
+    meaning: 书籍维度表，一行一本书，含书名、作者、出版社、分类、价格与站内评分表现
+    columns:
+      - {name: book_id, type: INTEGER, meaning: 书籍唯一标识, synonyms: [书, 图书]}
+      - {name: title, type: TEXT, meaning: 书名, synonyms: [标题, 图书名]}
+      - {name: category, type: TEXT, meaning: 书籍分类, synonyms: [类型, 题材, 品类]}
+      - {name: publisher, type: TEXT, meaning: 出版社名称, synonyms: [出版方, 出版机构]}
+      - {name: price, type: REAL, meaning: 定价，单位元, synonyms: [书价, 售价]}
+      - {name: pub_year, type: INTEGER, meaning: 出版年份, synonyms: [出版年]}
+      - {name: rating_avg, type: REAL, meaning: 站内平均评分 0-10, synonyms: [评分, 打分]}
+      - {name: rating_count, type: INTEGER, meaning: 站内评分人数, synonyms: [打分人数]}
+    caveats:
+      - rating_avg 是站内 0-10 分，与 douban_rating 不同源，不可混用
+    joins:
+      - fact_rating.book_id = dim_book.book_id
+      - fact_comment.book_id = dim_book.book_id
+
+  - name: dim_author
+    grain: 一行一位作者
+    meaning: 作者维度表，一行一位作者，含作者姓名与生平简介
+    columns:
+      - {name: author_id, type: INTEGER, meaning: 作者唯一标识, synonyms: [作家, 著者]}
+      - {name: name, type: TEXT, meaning: 作者姓名}
+      - {name: life, type: TEXT, meaning: 生平简介}
+    joins:
+      - dim_author.author_id = dim_book.author_id
+
+  - name: fact_rating
+    grain: 一行一次打分
+    meaning: 评分事实表，一行一条打分记录，含 book_id、1-5 星分值与打分日期
+    columns:
+      - {name: rating_id, type: INTEGER, meaning: 打分记录唯一标识}
+      - {name: book_id, type: INTEGER, meaning: 关联书籍}
+      - {name: user_id, type: INTEGER, meaning: 打分的用户}
+      - {name: score, type: REAL, meaning: 打分 1-5 星}
+      - {name: rated_on, type: TEXT, meaning: 打分日期 YYYY-MM-DD}
+    caveats:
+      - score 是 1-5 星，与 dim_book.rating_avg 的 0-10 分不同刻度
+
+  - name: fact_comment
+    grain: 一行一条评论
+    meaning: 评论事实表，一行一条留言，含情感取值、正负极性标签与评论长度
+    columns:
+      - {name: comment_id, type: INTEGER, meaning: 评论唯一标识}
+      - {name: book_id, type: INTEGER, meaning: 关联书籍}
+      - {name: user_id, type: INTEGER, meaning: 评论用户}
+      - {name: sentiment, type: REAL, meaning: 情感得分 -1 到 1}
+      - {name: polarity, type: TEXT, meaning: 极性标签 pos/neu/neg}
+      - {name: created_on, type: TEXT, meaning: 评论日期 YYYY-MM-DD}

@@ -1,0 +1,14 @@
+# 运行时依赖（无 GPU、无外部服务、无 Node 构建链）
+fastapi==0.162.0
+uvicorn==0.54.0
+pydantic==2.13.4
+httpx==0.28.1
+sqlglot==30.27.0
+PyYAML==6.0.2
+
+# 数据层（ETL 与统计）
+pandas==2.3.3
+numpy==2.3.5
+
+# 测试
+pytest==9.2.0

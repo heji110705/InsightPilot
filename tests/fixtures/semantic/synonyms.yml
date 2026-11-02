@@ -1,0 +1,14 @@
+version: 1
+synonyms:
+  评分: [打分, 分数, 评级]
+  打分: [评分]
+  评论: [留言, 短评]
+  分类: [类型, 题材, 品类]
+  价格: [书价, 定价, 售价]
+  作者: [作家, 著者]
+  出版社: [出版方, 出版机构]
+  书籍: [图书, 书本]
+joins:
+  - dim_book.book_id = fact_rating.book_id
+  - dim_book.book_id = fact_comment.book_id
+  - dim_author.author_id = dim_book.author_id

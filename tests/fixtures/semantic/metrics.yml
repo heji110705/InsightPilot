@@ -1,0 +1,49 @@
+version: 1
+metrics:
+  - key: book_cnt
+    name: 书籍数
+    aliases: [多少本书, 图书数量, 书目数, 书籍总量]
+    definition: dim_book 的行数，一本一条，含无评分的书
+    formula: COUNT(dim_book.book_id)
+    unit: 本
+    tables: [dim_book]
+    caveats: [含无评分的书]
+    sql_template: "SELECT COUNT(*) AS 书籍数 FROM dim_book {where}"
+
+  - key: avg_rating
+    name: 平均评分
+    aliases: [评分均值, 平均打分, 平均分数, 站内评分]
+    definition: dim_book.rating_avg 的均值，取值 0-10，只有本站用户打分
+    formula: AVG(dim_book.rating_avg)
+    unit: 分
+    tables: [dim_book]
+    caveats: [不要与豆瓣评分混用]
+    sql_template: "SELECT ROUND(AVG(rating_avg), 2) AS 平均评分 FROM dim_book {where}"
+
+  - key: rating_user_cnt
+    name: 评分人数
+    aliases: [打分人数, 有多少人评分, 评价人数]
+    definition: 对某本书打过分的人次，取 fact_rating 的行数或 dim_book.rating_count
+    formula: COUNT(DISTINCT fact_rating.user_id)
+    unit: 人
+    tables: [fact_rating, dim_book]
+    caveats: [人次与人头在重复打分时不同]
+
+  - key: comment_cnt
+    name: 评论数
+    aliases: [评论条数, 多少条评论, 评论量]
+    definition: fact_comment 的行数，一条留言算一条
+    formula: COUNT(fact_comment.comment_id)
+    unit: 条
+    tables: [fact_comment]
+    caveats: [含被折叠的短评]
+
+  - key: avg_price
+    name: 平均价格
+    aliases: [均价, 平均书价, 价格均值]
+    definition: dim_book.price 的算术平均，单位元
+    formula: AVG(dim_book.price)
+    unit: 元
+    tables: [dim_book]
+    caveats: [空价格不计入分母]
+    sql_template: "SELECT ROUND(AVG(price), 2) AS 平均价格 FROM dim_book {where}"

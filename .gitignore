@@ -1,0 +1,16 @@
+# 本地运行配置，含 API Key —— 永远不要提交
+.env
+.env.local
+.env.*.local
+# 但示例文件要提交，否则别人 clone 下来不知道要配哪些变量
+!.env.example
+
+# 运行时产物
+data/runtime.sqlite
+.pytest_cache/
+__pycache__/
+*.pyc
+_work/
+
+# 评测临时输出
+/tmp/

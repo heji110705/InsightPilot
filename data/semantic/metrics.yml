@@ -1,0 +1,272 @@
+version: 1
+# 指标口径目录。每个 sql_template 都保留 {where} {group} {having} {order} {limit}
+# 五个槽位（契约 2.7），且五个槽位全填空串时必须能直接执行——
+# 这一点由 scripts/check_semantic.py 里的模板自检逐条实测，不靠肉眼。
+metrics:
+  # ---------------- 规模类 ----------------
+  - key: book_cnt
+    name: 书籍数
+    aliases: [多少本书, 图书数量, 书目数, 书的数量, 一共几本书, 藏书量, 收录了多少本]
+    definition: dim_book 的行数，一行一本书
+    formula: COUNT(dim_book.book_id)
+    unit: 本
+    tables: [dim_book]
+    caveats:
+      - 只数书目，不含复本；同一本书的不同版本会算成多条
+      - 想数"有评分的书"要额外加 WHERE rating_count > 0，本数据集 250 本都有评分
+    sql_template: "SELECT COUNT(*) AS 书籍数 FROM dim_book {where} {group} {having} {order} {limit}"
+
+  - key: author_cnt
+    name: 作者数
+    aliases: [多少位作者, 作者数量, 有多少作家, 作者人数, 几位作者]
+    definition: dim_author 的作者档案数；若按书目统计去重作者则为 COUNT(DISTINCT dim_book.author_id)
+    formula: COUNT(dim_author.author_id)
+    unit: 位
+    tables: [dim_author]
+    caveats:
+      - 作者档案 197 位，但书目里只出现 184 位（13 位作者名下无书），两个数都"对"，看问题问的是档案还是出书作者
+      - 2 本书 author_id 为空，COUNT(DISTINCT author_id) 不会把它们算进任何作者
+    sql_template: "SELECT COUNT(*) AS 作者数 FROM dim_author {where} {group} {having} {order} {limit}"
+
+  - key: user_cnt
+    name: 用户数
+    aliases: [多少用户, 用户数量, 活跃用户, 有多少人用, 读者人数, 独立用户]
+    definition: 产生过点击行为的去重用户数（fact_click 覆盖全部 101 位用户）
+    formula: COUNT(DISTINCT fact_click.user_id)
+    unit: 人
+    tables: [fact_click]
+    caveats:
+      - 必须 COUNT(DISTINCT user_id)；fact_click 一行是一次事件，同一用户会出现几十次
+      - 评分、评论、收藏三张表的去重用户分别是 101/99/98，四表并集仍是 101；回答"平台有多少用户"要说清以哪张表为准
+      - 不要把四张事实表 UNION ALL 之后 COUNT(*)，那是行为次数不是人数
+    sql_template: "SELECT COUNT(DISTINCT user_id) AS 用户数 FROM fact_click {where} {group} {having} {order} {limit}"
+
+  - key: rating_cnt
+    name: 评分数
+    aliases: [评分次数, 打分次数, 评分条数, 多少条评分, 评价数量, 打分记录]
+    definition: fact_rating 的评分记录条数，一行一次打分
+    formula: COUNT(fact_rating.rating_id)
+    unit: 条
+    tables: [fact_rating]
+    caveats:
+      - 本数据 (user_id, book_id) 无重复，去重后仍是 4202；但换数据后 COUNT(DISTINCT user_id) 与 COUNT(*) 会分叉
+      - 评分条数 ≠ 评分人数：4202 条来自 101 位用户
+      - 与 dim_book.rating_count 求和一致（SUM=4202），可以互相校验
+    sql_template: "SELECT COUNT(*) AS 评分数 FROM fact_rating {where} {group} {having} {order} {limit}"
+
+  # ---------------- 质量类 ----------------
+  - key: avg_rating
+    name: 平均评分
+    aliases: [平均分, 评分均值, 打分怎么样, 平均打分, 站内评分, 口碑分, 评分水平]
+    definition: 书籍粒度等权平均：AVG(dim_book.rating_avg)，每本书权重相同
+    formula: AVG(dim_book.rating_avg)
+    unit: 分（0-10）
+    tables: [dim_book]
+    caveats:
+      - 这是 0-10 分制，不是 5 分制；报"8.7 分"才对，报"4.35 星"要显式换算
+      - 书等权 vs 评分条数加权：AVG(rating_avg)=8.69，AVG(fact_rating.score)=8.69，本数据接近，但分类比较时差异会放大
+      - rating_avg 与 douban_rating 不同源，不能放在同一个 AVG 里
+      - 想避免"一本书一个人打满分就排第一"，按书排序时应加 rating_count >= 10 之类的门槛
+    sql_template: "SELECT ROUND(AVG(rating_avg), 2) AS 平均评分 FROM dim_book {where} {group} {having} {order} {limit}"
+
+  - key: good_rating_rate
+    name: 好评率
+    aliases: [好评占比, 好评比例, 高分占比, 满意率, 好评度, 四分以上占比]
+    definition: score >= 8（等价 5 分制的 4 星）的评分条数占全部评分的比例
+    formula: SUM(CASE WHEN score >= 8 THEN 1 ELSE 0 END) * 100.0 / COUNT(*)
+    unit: "%"
+    tables: [fact_rating]
+    caveats:
+      - score 是 0-10 分，4 星等价于 8 分；写成 score >= 4 会得到 99.7% 的假好评率
+      - 分母是全部评分条数（含低分），不是"有评分的书数"
+      - 分母要不要排除中性/无效评分要先声明；本表没有无效评分
+    sql_template: "SELECT ROUND(100.0 * SUM(CASE WHEN score >= 8 THEN 1 ELSE 0 END) / COUNT(*), 2) AS 好评率 FROM fact_rating {where} {group} {having} {order} {limit}"
+
+  - key: douban_avg
+    name: 豆瓣评分均值
+    aliases: [豆瓣平均分, 豆瓣分, 豆瓣口碑, 豆瓣评分, 外部评分]
+    definition: AVG(dim_book.douban_rating)，每本书等权
+    formula: AVG(dim_book.douban_rating)
+    unit: 分（0-10）
+    tables: [dim_book]
+    caveats:
+      - 与 rating_avg 不同源，不可混用、不可相加、不可算差值当"站内偏差"以外的用途
+      - 豆瓣评分系统性高于站内：实测 196/250 本豆瓣更高，均值差约 0.47 分
+      - douban_votes 是豆瓣评价人数（十万级），不能当站内评分人数用
+    sql_template: "SELECT ROUND(AVG(douban_rating), 2) AS 豆瓣评分均值 FROM dim_book {where} {group} {having} {order} {limit}"
+
+  # ---------------- 互动类 ----------------
+  - key: comment_cnt
+    name: 评论数
+    aliases: [书评数, 多少条评论, 评论条数, 大家都在讨论, 讨论量, 短评数]
+    definition: fact_comment 的评论条数
+    formula: COUNT(fact_comment.comment_id)
+    unit: 条
+    tables: [fact_comment]
+    caveats:
+      - 250 本书里有 1 本零评论；按书统计要用 LEFT JOIN 或 COALESCE，否则会静默少一行
+      - 评论条数不等于评论人数（1976 条 / 99 人），问"多少人评论"要 COUNT(DISTINCT user_id)
+      - 评论日期只有 2026-10-18 一天，不能做趋势
+    sql_template: "SELECT COUNT(*) AS 评论数 FROM fact_comment {where} {group} {having} {order} {limit}"
+
+  - key: click_cnt
+    name: 点击数
+    aliases: [点击量, 点击次数, 被点了多少次, 浏览量, 访问量, 热度, 曝光点击]
+    definition: fact_click 中 event='click' 的事件条数（曝光 expose 不计入）
+    formula: COUNT(*) FROM fact_click WHERE event = 'click'
+    unit: 次
+    tables: [fact_click]
+    caveats:
+      - 必须先过滤 event='click'；直接 COUNT(*) 会把 4027 条曝光算进来，从 5001 虚增到 9028（+80%）
+      - 口语说的浏览量/热度在库里只有 click / expose 两种事件
+      - 一行一次事件，同一用户可重复点击同一本书；"多少人看过"要 COUNT(DISTINCT user_id)
+      - 只有 2026-10-18 与 2026-11-01 两天数据，且都是周日
+    sql_template: "SELECT COUNT(*) AS 点击数 FROM (SELECT * FROM fact_click WHERE event = 'click') k {where} {group} {having} {order} {limit}"
+
+  - key: shelf_cnt
+    name: 收藏数
+    aliases: [加入书架数, 书架数, 收藏量, 多少人收藏, 被收藏次数, 想看人数]
+    definition: fact_shelf 的书架记录数，含 want/reading/read 三种状态
+    formula: COUNT(fact_shelf.shelf_id)
+    unit: 次
+    tables: [fact_shelf]
+    caveats:
+      - status 取值是 want / reading / read，不是 wish；本数据另有 276 条 want、651 条 reading、1605 条 read
+      - 想看/想读只对应 status='want'（276 条），不等于全部收藏数（2532 条）
+      - 每本书都至少被收藏一次，按书看收藏数的最小值是 1，不存在 0
+    sql_template: "SELECT COUNT(*) AS 收藏数 FROM fact_shelf {where} {group} {having} {order} {limit}"
+
+  - key: sentiment_avg
+    name: 评论情感均值
+    aliases: [情感分, 平均情感, 评论情绪, 口碑情感, 正负面程度, 情感倾向]
+    definition: AVG(fact_comment.sentiment)，取值 -1（极负面）到 1（极正面）
+    formula: AVG(fact_comment.sentiment)
+    unit: 分（-1..1）
+    tables: [fact_comment]
+    caveats:
+      - 取值区间是 -1..1，不是 0-1，也不是百分制；报"0.85"要说明是 -1..1 尺度
+      - 全量均值 0.845，极度偏正，书与书之间的区分度低，比较时最好同时看 polarity 分布
+      - 无评论的书 sentiment 为 NULL，AVG 会自动跳过，不要用 0 填充（会把中性误当负面）
+    sql_template: "SELECT ROUND(AVG(sentiment), 3) AS 评论情感均值 FROM fact_comment {where} {group} {having} {order} {limit}"
+
+  - key: positive_comment_rate
+    name: 正向评论占比
+    aliases: [好评占比, 正面评论比例, 正向比例, 好评率评论, 正面评价占比, 情感正向率]
+    definition: polarity='pos' 的评论条数占全部评论条数的比例
+    formula: SUM(CASE WHEN polarity = 'pos' THEN 1 ELSE 0 END) * 100.0 / COUNT(*)
+    unit: "%"
+    tables: [fact_comment]
+    caveats:
+      - polarity 只有 pos / neu / neg 三种取值，没有 positive / negative 写法
+      - 分母是全部评论（含 neu 110 条），若改成"只算 pos+neg"会从 89.4% 变成 94.7%，必须声明
+      - 与 fact_rating 的好评率不是一回事：一个按评论极性，一个按评分阈值
+      - 与 dim_book.positive_rate 同口径（已核对一致），但后者是回填列，跨表比较时只用一边
+    sql_template: "SELECT ROUND(100.0 * SUM(CASE WHEN polarity = 'pos' THEN 1 ELSE 0 END) / COUNT(*), 2) AS 正向评论占比 FROM fact_comment {where} {group} {having} {order} {limit}"
+
+  # ---------------- 结构类 ----------------
+  - key: category_book_cnt
+    name: 分类书籍数
+    aliases: [每个分类多少本, 各类书数量, 分类分布, 按类型统计, 题材分布, 品类结构]
+    definition: 按 dim_book.category 分组后的书籍数
+    formula: COUNT(*) GROUP BY dim_book.category
+    unit: 本
+    tables: [dim_book]
+    caveats:
+      - 12 个分类极度不均衡：文学小说 139 本（56%），语言文化只有 1 本
+      - category 无空值，但分类是单层字符串，没有上下级
+      - 分组后按均值/比率排名，小分类（1-5 本）的名次基本是噪声
+    sql_template: "SELECT category AS 分类, COUNT(*) AS 书籍数 FROM dim_book {where} {group} {having} {order} {limit}"
+
+  - key: publisher_book_cnt
+    name: 出版社书籍数
+    aliases: [每家出版社多少本, 出版社分布, 哪个社出的书多, 出版机构书目数, 按出版社统计]
+    definition: 按 dim_book.publisher 分组后的书籍数
+    formula: COUNT(*) GROUP BY dim_book.publisher
+    unit: 本
+    tables: [dim_book]
+    caveats:
+      - 69 个出版社里 40 多个只有 1 本书，长尾极重
+      - publisher 未归一化："广州出版社 花城出版社"这类合并串会自成一类，同社被拆分计数
+      - 按出版社比较均值时必须加 HAVING COUNT(*) >= 5，否则 1 本书的社也能排第一
+    sql_template: "SELECT publisher AS 出版社, COUNT(*) AS 书籍数 FROM dim_book {where} {group} {having} {order} {limit}"
+
+  - key: yearly_pub_cnt
+    name: 年均出版数
+    aliases: [每年出多少本, 年均出书量, 一年出版几本, 出版节奏, 平均每年书目]
+    definition: 书籍数 / 有出版记录的年份数（不是年份跨度）
+    formula: COUNT(*) / COUNT(DISTINCT pub_year)
+    unit: 本/年
+    tables: [dim_book]
+    caveats:
+      - 分母是"有书的年份数"（39 个），不是 (max-min+1)=63 年；两种口径差 1.6 倍
+      - pub_year 跨度 1962-2024，中间大量空年份，用跨度做分母会把年均值稀释
+      - 近年样本少（2023 年 3 本、2024 年 1 本），不能据此判断"出版变少"
+    sql_template: "SELECT ROUND(1.0 * COUNT(*) / COUNT(DISTINCT pub_year), 2) AS 年均出版数 FROM dim_book {where} {group} {having} {order} {limit}"
+
+  # ---------------- 比率类 ----------------
+  - key: ratings_per_user
+    name: 人均评分次数
+    aliases: [每人打多少分, 人均打分, 用户评分频次, 平均每人评几本, 打分活跃度]
+    definition: 评分总条数 / 去重评分用户数
+    formula: COUNT(*) / COUNT(DISTINCT user_id)
+    unit: 次/人
+    tables: [fact_rating]
+    caveats:
+      - 分母用 COUNT(DISTINCT user_id)，不是 COUNT(user_id)
+      - 只统计"打过分的用户"，没有打分行为的人不在分母里，所以这不是全站人均
+      - 本数据 4202/101≈41.6，一天内完成，不代表日常频次
+    sql_template: "SELECT ROUND(1.0 * COUNT(*) / COUNT(DISTINCT user_id), 2) AS 人均评分次数 FROM fact_rating {where} {group} {having} {order} {limit}"
+
+  - key: comments_per_book
+    name: 书均评论数
+    aliases: [每本书多少评论, 平均评论数, 书均书评, 评论密度, 每本被讨论多少]
+    definition: 评论总条数 / 全部书目数（分母固定为 250，含那本零评论的书）
+    formula: COUNT(fact_comment.comment_id) / (SELECT COUNT(*) FROM dim_book)
+    unit: 条/本
+    tables: [fact_comment, dim_book]
+    caveats:
+      - 分母是全部 250 本（含 1 本零评论），不是"有评论的 249 本"；后者会得到 7.94 而不是 7.90
+      - 分子是评论条数，不是评论人数
+      - 若按分类算，分母要换成该分类的书数，不能在 WHERE 之后还用 250
+    sql_template: "SELECT ROUND(1.0 * COUNT(*) / (SELECT COUNT(*) FROM dim_book), 2) AS 书均评论数 FROM fact_comment {where} {group} {having} {order} {limit}"
+
+  - key: click_shelf_rate
+    name: 点击转化率
+    aliases: [点击收藏转化率, 转化率, 有点击且有收藏的书占比, 点击后收藏比例, 内容转化]
+    definition: 有点击的书里，同时也有收藏行为的书所占比例（书籍粒度，不是行为粒度）
+    formula: COUNT(DISTINCT 有收藏的 book_id) / COUNT(DISTINCT 有点击的 book_id)
+    unit: "%"
+    tables: [fact_click, fact_shelf]
+    caveats:
+      - 本数据集 250 本全部既有点击又有收藏，结果恒为 100%，没有区分度；这是数据特性，不是口径错
+      - 想看行为层转化应改成 收藏数/点击数（2532/5001≈50.6%），两者含义完全不同
+      - 两张表都是一行一次行为，直接 JOIN 再 COUNT 会被 1:N × 1:N 放大，必须先各自按 book_id 去重
+      - 若把 expose 也算进"有点击"，分子分母都会变，结论不可比
+    sql_template: "SELECT ROUND(100.0 * COUNT(DISTINCT CASE WHEN s.shelf_cnt > 0 THEN c.book_id END) / COUNT(DISTINCT c.book_id), 2) AS 点击转化率 FROM (SELECT DISTINCT book_id FROM fact_click WHERE event = 'click') c LEFT JOIN (SELECT book_id, COUNT(*) AS shelf_cnt FROM fact_shelf GROUP BY book_id) s ON s.book_id = c.book_id {where} {group} {having} {order} {limit}"
+
+  # ---------------- 冷热类 ----------------
+  - key: high_rating_low_exposure_cnt
+    name: 高评分低曝光书籍数
+    aliases: [叫好不叫座, 评分高但没人看, 被埋没的好书, 冷门高分书, 高口碑低热度, 遗珠]
+    definition: rating_avg >= 8.5 且点击事件数（click_cnt，含曝光）< 20 的书目数
+    formula: COUNT(*) WHERE rating_avg >= 8.5 AND click_cnt < 20
+    unit: 本
+    tables: [v_book_overview]
+    caveats:
+      - 两个阈值都是主观约定（8.5 分 / 20 次），换阈值结论会变，回答时必须把阈值说出来
+      - v_book_overview.click_cnt 含 expose，是"曝光+点击"的总量，不是纯点击
+      - 250 本里有 174 本评分 >= 8.5，高评分本身不稀缺，真正稀缺的是低曝光（全库仅 33 本 click_cnt<20）
+    sql_template: "SELECT COUNT(*) AS 高评分低曝光书籍数 FROM (SELECT * FROM v_book_overview WHERE rating_avg >= 8.5 AND click_cnt < 20) t {where} {group} {having} {order} {limit}"
+
+  - key: rating_count_median
+    name: 评分人数中位数
+    aliases: [评分人数中位值, 打分人数中位数, 中位数评分人数, 典型评分人数, 一半的书评分人数]
+    definition: dim_book.rating_count 的中位数（250 本取第 125、126 位的平均）
+    formula: 用 ROW_NUMBER + COUNT OVER 取中间两行再平均
+    unit: 人
+    tables: [dim_book]
+    caveats:
+      - SQLite 没有 MEDIAN()，必须用 ROW_NUMBER 窗口或排序取中间行，写 AVG 是平均值不是中位数
+      - 偶数行要取中间两行平均，只取一行会偏
+      - 本数据中位数是 17，均值 16.8，分布略右偏（最大 29 拉高均值），两者接近但仍不能互相替代
+    sql_template: "SELECT ROUND(AVG(rating_count), 1) AS 评分人数中位数 FROM (SELECT rating_count, ROW_NUMBER() OVER (ORDER BY rating_count) AS rn, COUNT(*) OVER () AS n FROM dim_book {where}) t WHERE rn IN ((n + 1) / 2, (n + 2) / 2) {group} {having} {order} {limit}"

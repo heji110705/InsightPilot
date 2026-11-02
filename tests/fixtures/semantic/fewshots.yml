@@ -1,0 +1,36 @@
+version: 1
+examples:
+  - question: 一共有多少本书
+    sql: SELECT COUNT(*) AS 书籍数 FROM dim_book
+    note: 计数类，直接数行数
+    tags: [计数, 单表]
+
+  - question: 每个分类的平均评分是多少
+    sql: |
+      SELECT category AS 分类, ROUND(AVG(rating_avg), 2) AS 平均评分
+      FROM dim_book GROUP BY category ORDER BY 平均评分 DESC
+    note: 分组求均值，注意 rating_avg 已是书目级均值
+    tags: [分组, 评分]
+
+  - question: 评分人数最多的前 10 本书
+    sql: |
+      SELECT b.title AS 书名, COUNT(DISTINCT r.user_id) AS 评分人数
+      FROM fact_rating r JOIN dim_book b ON b.book_id = r.book_id
+      GROUP BY b.book_id ORDER BY 评分人数 DESC LIMIT 10
+    note: 跨表 JOIN + 排行
+    tags: [排行, join]
+
+  - question: 2026 年 10 月每天有多少条评论
+    sql: |
+      SELECT created_on AS 日期, COUNT(*) AS 评论数
+      FROM fact_comment WHERE created_on LIKE '2026-10%'
+      GROUP BY created_on ORDER BY 日期
+    note: 时间窗过滤 + 按日聚合
+    tags: [时间, 评论]
+
+  - question: 销量最好的出版社平均书价是多少
+    sql: |
+      SELECT publisher AS 出版社, ROUND(AVG(price), 2) AS 平均价格
+      FROM dim_book GROUP BY publisher ORDER BY COUNT(*) DESC LIMIT 1
+    note: 先按册数排序再取均值
+    tags: [价格, 出版社]

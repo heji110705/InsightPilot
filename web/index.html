@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>InsightPilot · 问数控制台</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark">IP</span>
+    <span class="brand-name">InsightPilot</span>
+    <span class="brand-sub">问数控制台</span>
+  </div>
+  <div class="topbar-meta">
+    <span class="chip" id="chip-mode" title="引擎运行模式">连接中</span>
+    <span class="chip" id="chip-cache" title="语义缓存命中率">缓存命中 —</span>
+    <span class="chip" id="chip-turns" title="累计轮次与成功率">轮次 —</span>
+    <span class="chip mono" id="chip-health" title="表 / 指标 / 仓库路径">自检 —</span>
+  </div>
+</header>
+
+<main class="layout">
+
+  <section class="chat" aria-label="对话区">
+    <div class="chat-scroll" id="chat" aria-live="polite">
+      <div class="welcome">
+        <h1>问一句数仓里的事实</h1>
+        <p>问题会走 intake → linker → sqlcraft → executor → analyst → critic，右侧实时显示每一步的耗时与自检结果。</p>
+        <div class="samples" id="samples">
+          <button type="button" class="sample" data-q="一共多少本书">一共多少本书</button>
+          <button type="button" class="sample" data-q="各分类的书籍数量">各分类的书籍数量</button>
+          <button type="button" class="sample" data-q="评分最高的前十本书">评分最高的前十本书</button>
+        </div>
+      </div>
+    </div>
+    <form class="composer" id="composer" autocomplete="off">
+      <textarea id="question" rows="1" placeholder="问一个关于数仓的问题，例如：各分类的书籍数量" aria-label="问题"></textarea>
+      <button type="submit" id="send">提问</button>
+    </form>
+    <p class="hint">Enter 发送 · Shift+Enter 换行</p>
+  </section>
+
+  <aside class="trace" aria-label="本轮链路">
+    <div class="trace-head">
+      <h2>本轮链路</h2>
+      <span class="muted" id="trace-meta">等待提问</span>
+    </div>
+    <ol class="chain" id="chain">
+      <li class="chain-empty">提问后这里按真实执行顺序显示节点、状态与耗时；失败节点标红。</li>
+    </ol>
+    <div class="trace-foot">
+      <span class="muted" id="trace-note">数据来自 SSE 节点事件，回落到 report.path 时无耗时</span>
+    </div>
+  </aside>
+
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

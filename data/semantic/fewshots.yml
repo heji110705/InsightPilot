@@ -1,0 +1,124 @@
+version: 1
+# 24 条范例。全部实测可执行且结果非空（scripts/check_semantic.py 会逐条复跑）。
+# 选取原则：覆盖计数 / 分组 / TOP N / 时间序列 / 比率 / 多表 JOIN / 子查询 / 窗口函数，
+# 并且每条 note 都写清"为什么这么写"，让模型学到口径而不只是语法。
+examples:
+  - question: "咱们库里一共收了多少本书"
+    sql: "SELECT COUNT(*) AS 书籍数 FROM dim_book"
+    note: "计数用 COUNT(*)；dim_book 一行一本，不需要 DISTINCT"
+    tags: [计数, 单表]
+
+  - question: "有多少人真正在打分"
+    sql: "SELECT COUNT(DISTINCT user_id) AS 打分用户数 FROM fact_rating"
+    note: "行为表一行一次行为，数人必须 COUNT(DISTINCT user_id)"
+    tags: [计数, 去重计数, 单表]
+
+  - question: "每个分类大概有多少本书"
+    sql: "SELECT category AS 分类, COUNT(*) AS 书籍数 FROM dim_book GROUP BY category ORDER BY COUNT(*) DESC"
+    note: "先 GROUP BY 再 ORDER BY 聚合表达式，不要 ORDER BY 中文别名"
+    tags: [分组聚合, 单表]
+
+  - question: "藏书最多的五个分类是哪些"
+    sql: "SELECT category AS 分类, COUNT(*) AS 书籍数 FROM dim_book GROUP BY category ORDER BY COUNT(*) DESC LIMIT 5"
+    note: "TOP N = GROUP BY + ORDER BY 聚合 + LIMIT"
+    tags: [TOP N, 分组聚合]
+
+  - question: "哪个分类的书平均定价最贵"
+    sql: "SELECT category AS 分类, ROUND(AVG(price), 2) AS 平均定价, COUNT(*) AS 书籍数 FROM dim_book WHERE price > 1 GROUP BY category ORDER BY AVG(price) DESC LIMIT 5"
+    note: "price 有 0.2 元脏值和 NULL，先 WHERE price > 1 再求均值"
+    tags: [分组聚合, TOP N, 数据清洗]
+
+  - question: "豆瓣评分最高的十本书"
+    sql: "SELECT title AS 书名, douban_rating AS 豆瓣评分, douban_votes AS 豆瓣人数 FROM dim_book ORDER BY douban_rating DESC, title LIMIT 10"
+    note: "豆瓣分与站内 rating_avg 不同源；并列时加 title 保证结果稳定"
+    tags: [TOP N, 单表]
+
+  - question: "每个分类里评分最高的三本书"
+    sql: "SELECT 分类, 书名, 站内评分 FROM (SELECT b.category AS 分类, b.title AS 书名, b.rating_avg AS 站内评分, ROW_NUMBER() OVER (PARTITION BY b.category ORDER BY b.rating_avg DESC, b.rating_count DESC) AS rn FROM dim_book b WHERE b.rating_count >= 10) t WHERE rn <= 3 ORDER BY 分类, rn"
+    note: "分组内排名用 ROW_NUMBER() OVER (PARTITION BY ... ORDER BY ...)，再在外层过滤 rn<=3；加评分人数门槛避免小样本"
+    tags: [窗口函数, ROW_NUMBER, 子查询]
+
+  - question: "每本书在自己分类里收藏能排第几？只看前两名"
+    sql: "SELECT 分类, 书名, 收藏数, 名次 FROM (SELECT b.category AS 分类, b.title AS 书名, s.shelf_cnt AS 收藏数, ROW_NUMBER() OVER (PARTITION BY b.category ORDER BY s.shelf_cnt DESC) AS 名次 FROM dim_book b JOIN (SELECT book_id, COUNT(*) AS shelf_cnt FROM fact_shelf GROUP BY book_id) s ON s.book_id = b.book_id) t WHERE 名次 <= 2 ORDER BY 分类, 名次"
+    note: "窗口函数不能直接写在 WHERE 里，必须套一层子查询；事实表先按 book_id 预聚合再 JOIN"
+    tags: [窗口函数, ROW_NUMBER, 多表JOIN]
+
+  - question: "这两天的点击量按天是怎么变的"
+    sql: "SELECT clicked_on AS 日期, COUNT(*) AS 点击数 FROM fact_click WHERE event = 'click' GROUP BY clicked_on ORDER BY clicked_on"
+    note: "时间序列 = 按日期列 GROUP BY；点击必须过滤 event='click'，否则曝光会被算进去"
+    tags: [时间序列, 单表]
+
+  - question: "每天的点击累计到当天一共多少"
+    sql: "SELECT clicked_on AS 日期, COUNT(*) AS 当日点击, SUM(COUNT(*)) OVER (ORDER BY clicked_on) AS 累计点击 FROM fact_click WHERE event = 'click' GROUP BY clicked_on ORDER BY clicked_on"
+    note: "累计曲线用窗口函数叠加在聚合上：SUM(COUNT(*)) OVER (ORDER BY 日期)"
+    tags: [窗口函数, 时间序列]
+
+  - question: "从曝光到点击的转化率是多少"
+    sql: "SELECT SUM(CASE WHEN event = 'click' THEN 1 ELSE 0 END) AS 点击数, SUM(CASE WHEN event = 'expose' THEN 1 ELSE 0 END) AS 曝光数, ROUND(100.0 * SUM(CASE WHEN event = 'click' THEN 1 ELSE 0 END) / SUM(CASE WHEN event = 'expose' THEN 1 ELSE 0 END), 2) AS 曝光点击率 FROM fact_click"
+    note: "同一张表用条件聚合一次取两个口径；乘 100.0 强制浮点，避免整数除法截断"
+    tags: [比率, 条件聚合]
+
+  - question: "各个分类的好评率怎么样"
+    sql: "SELECT b.category AS 分类, COUNT(*) AS 评分数, ROUND(100.0 * SUM(CASE WHEN r.score >= 8 THEN 1 ELSE 0 END) / COUNT(*), 2) AS 好评率 FROM fact_rating r JOIN dim_book b ON b.book_id = r.book_id GROUP BY b.category ORDER BY ROUND(100.0 * SUM(CASE WHEN r.score >= 8 THEN 1 ELSE 0 END) / COUNT(*), 2) DESC"
+    note: "score 是 0-10 分，好评阈值取 8（等价 4 星）；JOIN 维度表拿分类后按评分条数加权"
+    tags: [比率, 多表JOIN, 条件聚合]
+
+  - question: "评论最多的十本书是哪几本"
+    sql: "SELECT b.title AS 书名, COUNT(c.comment_id) AS 评论数 FROM dim_book b JOIN fact_comment c ON c.book_id = b.book_id GROUP BY b.book_id, b.title ORDER BY COUNT(c.comment_id) DESC LIMIT 10"
+    note: "GROUP BY 要带上 title，否则 SELECT 书名在严格模式下非法；用 book_id 分组避免同名书合并"
+    tags: [多表JOIN, TOP N]
+
+  - question: "有哪些书收藏的人比评论的人还多"
+    sql: "SELECT b.title AS 书名, x.shelf_cnt AS 收藏数, y.comment_cnt AS 评论数 FROM (SELECT book_id, COUNT(*) AS shelf_cnt FROM fact_shelf GROUP BY book_id) x JOIN (SELECT book_id, COUNT(*) AS comment_cnt FROM fact_comment GROUP BY book_id) y ON y.book_id = x.book_id JOIN dim_book b ON b.book_id = x.book_id WHERE x.shelf_cnt > y.comment_cnt ORDER BY (x.shelf_cnt - y.comment_cnt) DESC LIMIT 10"
+    note: "两张事实表各自先预聚合再 JOIN，比较两个聚合值用 WHERE（同一行）而不是 HAVING"
+    tags: [子查询, 多表JOIN, 预聚合]
+
+  - question: "既打过分又写过评论的用户有多少"
+    sql: "SELECT COUNT(*) AS 双重活跃用户数 FROM (SELECT user_id FROM fact_rating INTERSECT SELECT user_id FROM fact_comment) t"
+    note: "求两个集合的交集用 INTERSECT，比两次 EXISTS 更直观；INTERSECT 自带去重"
+    tags: [子查询, 集合运算]
+
+  - question: "有没有评分高但几乎没人看的书"
+    sql: "SELECT title AS 书名, rating_avg AS 站内评分, click_cnt AS 曝光加点击次数 FROM v_book_overview WHERE rating_avg >= 8.5 AND click_cnt < 20 ORDER BY rating_avg DESC LIMIT 10"
+    note: "跨事实表的组合条件走宽表视图，避免自己 JOIN 四张事实表时放大；阈值要在回答里说明"
+    tags: [视图, 口径, 阈值]
+
+  - question: "各家出版社的书平均被点开多少次？书少的社先别算"
+    sql: "SELECT b.publisher AS 出版社, COUNT(DISTINCT b.book_id) AS 书籍数, ROUND(1.0 * COUNT(k.click_id) / COUNT(DISTINCT b.book_id), 1) AS 书均点击数 FROM dim_book b JOIN fact_click k ON k.book_id = b.book_id AND k.event = 'click' GROUP BY b.publisher HAVING COUNT(DISTINCT b.book_id) >= 5 ORDER BY ROUND(1.0 * COUNT(k.click_id) / COUNT(DISTINCT b.book_id), 1) DESC LIMIT 10"
+    note: "分组比率的分母要用 COUNT(DISTINCT book_id) 而不是 COUNT(*)，因为 JOIN 后每本书有多行；HAVING 过滤小样本"
+    tags: [多表JOIN, 比率, HAVING]
+
+  - question: "大家把书加进书架后，想读、在读、读完各有多少"
+    sql: "SELECT status AS 收藏状态, COUNT(*) AS 记录数, COUNT(DISTINCT user_id) AS 用户数 FROM fact_shelf GROUP BY status ORDER BY COUNT(*) DESC"
+    note: "status 取值是 want/reading/read（不是 wish）；人数和记录数要分开给"
+    tags: [分组聚合, 单表]
+
+  - question: "哪本书争议最大"
+    sql: "SELECT title AS 书名, rating_avg AS 站内评分, sentiment_score AS 评论情感, rating_count AS 评分人数 FROM dim_book WHERE rating_count >= 10 ORDER BY (rating_avg / 10.0 - sentiment_score) DESC LIMIT 5"
+    note: "'争议'没有现成字段，约定为评分高但评论情感低：先把 0-10 分归一化再与 -1..1 的情感作差"
+    tags: [口径, 派生指标]
+
+  - question: "哪位作者的书被讨论得最多"
+    sql: "SELECT b.author_name AS 作者, COUNT(c.comment_id) AS 评论数, COUNT(DISTINCT b.book_id) AS 书籍数 FROM dim_book b JOIN fact_comment c ON c.book_id = b.book_id GROUP BY b.author_name ORDER BY COUNT(c.comment_id) DESC LIMIT 10"
+    note: "author_name 已冗余在 dim_book，不必 JOIN dim_author；按作者聚合时书籍数要 DISTINCT"
+    tags: [多表JOIN, 分组聚合]
+
+  - question: "按周看点击量"
+    sql: "SELECT STRFTIME('%Y-%W', clicked_on) AS 周, COUNT(*) AS 点击数 FROM fact_click WHERE event = 'click' GROUP BY STRFTIME('%Y-%W', clicked_on) ORDER BY 周"
+    note: "SQLite 用 STRFTIME 取周；只有两周数据，只能说两周对比，不能外推趋势"
+    tags: [时间序列, 单表]
+
+  - question: "11月1号那天哪几本书最火"
+    sql: "SELECT b.title AS 书名, COUNT(k.click_id) AS 点击数, COUNT(DISTINCT k.user_id) AS 点击人数 FROM dim_book b JOIN fact_click k ON k.book_id = b.book_id WHERE k.event = 'click' AND k.clicked_on = '2026-11-01' GROUP BY b.book_id, b.title ORDER BY COUNT(k.click_id) DESC LIMIT 5"
+    note: "单日切片用日期等值；'火'用点击数，若要用点击人数则 COUNT(DISTINCT user_id)，两者不同"
+    tags: [时间序列, 多表JOIN, TOP N]
+
+  - question: "评分人数一般是多少？中位数那种"
+    sql: "SELECT ROUND(AVG(rating_count), 1) AS 评分人数中位数 FROM (SELECT rating_count, ROW_NUMBER() OVER (ORDER BY rating_count) AS rn, COUNT(*) OVER () AS n FROM dim_book) t WHERE rn IN ((n + 1) / 2, (n + 2) / 2)"
+    note: "SQLite 没有 MEDIAN()，用 ROW_NUMBER + COUNT() OVER () 取中间一行或两行；偶数行取平均"
+    tags: [窗口函数, 子查询, 中位数]
+
+  - question: "出版社里哪家的书平均收藏最高"
+    sql: "SELECT b.publisher AS 出版社, COUNT(DISTINCT b.book_id) AS 书籍数, ROUND(1.0 * COUNT(s.shelf_id) / COUNT(DISTINCT b.book_id), 1) AS 书均收藏数 FROM dim_book b JOIN fact_shelf s ON s.book_id = b.book_id GROUP BY b.publisher HAVING COUNT(DISTINCT b.book_id) >= 5 ORDER BY ROUND(1.0 * COUNT(s.shelf_id) / COUNT(DISTINCT b.book_id), 1) DESC LIMIT 10"
+    note: "用书均而不是总收藏，否则出版社规模决定排名；HAVING 去掉只有 1-4 本的长尾社"
+    tags: [多表JOIN, 比率, HAVING]

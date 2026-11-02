@@ -1,0 +1,29 @@
+services:
+  insightpilot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: insightpilot:local
+    ports:
+      - "8000:8000"
+    environment:
+      # 默认走规则基线：docker compose up 不配任何东西也能打开界面把流程走一遍。
+      # 想切模型模式，在本机 .env 里写 IP_LLM_MODE=api 与 IP_LLM_API_KEY=...，
+      # compose 会自动从同名环境变量读取，Key 不会写进镜像。
+      IP_LLM_MODE: ${IP_LLM_MODE:-stub}
+      IP_LLM_BASE_URL: ${IP_LLM_BASE_URL:-https://api.deepseek.com/v1}
+      IP_LLM_API_KEY: ${IP_LLM_API_KEY:-}
+      IP_LLM_MODEL: ${IP_LLM_MODEL:-deepseek-chat}
+      # trace 写容器内临时目录，不污染挂载的仓库数据
+      IP_STATE_DB: /tmp/runtime.sqlite
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3).status == 200 else 1)"
+      interval: 30s
+      timeout: 4s
+      start_period: 15s
+      retries: 3
+    restart: unless-stopped

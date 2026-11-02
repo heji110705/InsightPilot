@@ -1,0 +1,15 @@
+# 构建上下文裁剪。两条硬要求：
+# 1. .env 绝不进镜像（Key 会跟着镜像被推到任何地方）；
+# 2. runtime.sqlite 是 165 MB 的运行产物，进镜像会让构建慢十倍，且内容无意义。
+.env
+.env.*
+!.env.example
+_work/
+.pytest_cache/
+**/__pycache__/
+*.pyc
+data/runtime.sqlite
+tests/
+docs/
+*.md
+.git/
