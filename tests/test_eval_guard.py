@@ -170,3 +170,51 @@ def test_report_api_mode_skips_template_root_cause_analysis() -> None:
     assert "_metric_sql" not in text
     assert "TemplateInferencer" not in text
     assert "人工复核" in text
+
+
+# ---------------------------------------------------------------------------
+# 章节编号：改过一次章序，把「4.1」留在了第 5 章下面
+# ---------------------------------------------------------------------------
+def _headings(text: str) -> list[tuple[int, str]]:
+    found: list[tuple[int, str]] = []
+    for line in text.splitlines():
+        if line.startswith("### "):
+            found.append((3, line[4:].strip()))
+        elif line.startswith("## "):
+            found.append((2, line[3:].strip()))
+    return found
+
+
+def _report_variants() -> list[dict]:
+    """三种会走到不同分支的输入：常规分、api 低分、模板低分。"""
+    normal = {"full": _metrics("api", "llm")}
+
+    low_api = _metrics("api", "llm")
+    low_api["metrics"]["ex"] = 0.2
+    low_api["metrics"]["ex_count"] = 12
+
+    return [normal, {"full": low_api}, {"full": _metrics("stub", "template")}]
+
+
+def test_report_chapters_are_sequential() -> None:
+    """章号必须是 1..N 连号，中间不能跳号或回头。"""
+    from app.eval.report import render_report
+
+    for results in _report_variants():
+        chapters = [int(title.split(".", 1)[0]) for level, title in _headings(render_report(results, command="demo")) if level == 2]
+        assert chapters == list(range(1, len(chapters) + 1)), chapters
+
+
+def test_report_subsection_numbers_follow_their_chapter() -> None:
+    """小节编号的前缀必须等于所在章号——否则读者会以为引用的节不存在。"""
+    from app.eval.report import render_report
+
+    for results in _report_variants():
+        chapter = 0
+        for level, title in _headings(render_report(results, command="demo")):
+            if level == 2:
+                chapter = int(title.split(".", 1)[0])
+                continue
+            prefix = title.split(" ", 1)[0]
+            assert prefix.startswith(f"{chapter}."), f"第 {chapter} 章下出现 {prefix}：{title}"
+

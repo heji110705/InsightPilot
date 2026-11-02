@@ -190,7 +190,7 @@ def _section_ablation(results: dict[str, dict[str, Any]]) -> list[str]:
         "本项目的目标是「答案包含正确信息」，所以覆盖一致更接近真实可用性；EX 作为严格参考保留。",
         "> p95 为最近秩百分位；样本不足 20 时退化为最大值（本次 n=60，不涉及）。"
         "延迟是端到端图执行耗时，含 SQL 执行，不含评测脚本读写 JSON 的开销。",
-        "> 平均尝试按**全题数**计算：被 intake 判为 out_of_scope 走 clarify 的题没有进入"
+        "> 平均尝试按**全题数**计算：被 intake 判为 out_of_scope 走 clarify 的题没有进入 "
         "executor，attempts 记 0，因此均值会略低于 1.00。",
         "",
     ]
@@ -210,7 +210,15 @@ def _section_cost(results: dict[str, dict[str, Any]]) -> list[str]:
             continue
         rows.append((VARIANT_LABEL.get(name, name), m))
     if not rows:
-        return []
+        # 章节标题固定保留：整份报告的章号是硬编码的，这里返回空会让后面
+        # 从 2 直接跳到 4，引用「第 3 节」的人会找不到东西。
+        return [
+            "## 3. 成本与调用量",
+            "",
+            "本次运行未采集到 token 与耗时数据（模板推理器不产生模型调用），"
+            "该维度留空；接入模型后重跑即会填充。",
+            "",
+        ]
 
     lines = [
         "## 3. 成本与调用量",
@@ -271,7 +279,7 @@ def _section_failures(results: dict[str, dict[str, Any]]) -> list[str]:
     lines = [
         "## 5. 失败分析",
         "",
-        "### 4.1 失败原因分布",
+        "### 5.1 失败原因分布",
         "",
         "| 配置 | failed | rejected | clarify | wrong | EX=False 合计 |",
         "|---|---|---|---|---|---|",
@@ -288,7 +296,7 @@ def _section_failures(results: dict[str, dict[str, Any]]) -> list[str]:
         "> `wrong` = SQL 执行成功（status=ok）但结果集不等价；它是最值得看的一类，"
         "说明问题出在 SQL 结构/口径而不是执行链路。",
         "",
-        "### 4.2 逐题失败清单",
+        "### 5.2 逐题失败清单",
         "",
     ]
 
@@ -406,7 +414,7 @@ def _section_diagnosis(results: dict[str, dict[str, Any]]) -> list[str]:
             "若要归因，应按题型抽样人工比对 pred SQL 与 gold SQL 的差异类型"
             "（漏 JOIN / 口径错 / 聚合层级错 / 多余过滤），不要从总数反推。",
             "",
-            "### 5.1 待人工复核项",
+            "### 6.1 待人工复核项",
             "",
             "以下两类必须先排除评测集自身的问题，再谈模型表现：",
             "- **gold 口径与题面不一致**的题（模板基线阶段已记录 Q57、Q22/Q51），"
@@ -465,7 +473,7 @@ def _section_diagnosis(results: dict[str, dict[str, Any]]) -> list[str]:
         "换句话说，**在规则基线上这两个模块没有可发挥的场景，不能据此判断它们在 "
         "LLM 模式下无效**。",
         "",
-        "### 5.1 引擎侧代码缺陷（只报告，不修改）",
+        "### 6.1 引擎侧代码缺陷（只报告，不修改）",
         "",
         "- **重复投影列**：`TemplateInferencer._metric_sql` 在指标模板已经自带分组列时，"
         "仍执行 `sql.replace(\"SELECT \", f\"SELECT {column} AS {alias}, \", 1)`，"
@@ -475,7 +483,7 @@ def _section_diagnosis(results: dict[str, dict[str, Any]]) -> list[str]:
         "修掉它也不会直接让这 4 题通过（Q13 还缺 `price > 1` 过滤、Q43 缺占比列、"
         "Q24 缺 JOIN），但失败原因会从「重复列」回到真实的 SQL 结构差异。",
         "",
-        "### 5.2 gold 口径观察（只报告，不修改）",
+        "### 6.2 gold 口径观察（只报告，不修改）",
         "",
         "- **Q57**：问题说「收藏和点击都很少」，但 gold SQL 只过滤 "
         "`click_cnt < 20`，没有给 `shelf_cnt` 设阈值（该子集收藏数实际 2–21），"
@@ -564,17 +572,18 @@ def render_report(
     lines: list[str] = [
         "# InsightPilot 评测报告（结果集等价）",
         "",
-        "> 判定口径：列数相同、列名不比较、行序不比较（多重集）、数值 1e-6 相对容差、"
-        "字符串去首尾空白且大小写敏感、None 与空串不等。",
+        "> 两个判定指标并列：**EX** 要求列数与金标准完全相同（列名不比较、行序不比较、"
+        "数值 1e-6 相对容差、字符串去首尾空白且大小写敏感、None 与空串不等）；"
+        "**覆盖一致**允许预测多带列，只要金标准每一列都能在预测里按值找到对应列、行不错位。",
         "> 所有指标由 `scripts/run_eval.py` 实跑写入 `docs/eval_results.json` 后渲染，"
-        "没有手填值；第 5.2 节标注为直接 SQL 抽检的数字除外。",
+        "没有手填值；个别来自直接 SQL 抽检的数字已在文中就地标注。",
         "",
     ]
     any_mode = next(iter(results.values()))["metrics"].get("mode", "stub")
     if any_mode == "api":
         lines += [
-            "> **先看重复性再读表**：同一配置重复运行的 EX 极差在本项目实测为 3.3 个百分点"
-            "（见 `docs/03b-重复性检验.md`）。本表是**单次运行**结果，"
+            "> **先看重复性再读表**：同一配置重复运行的 EX 极差在本项目实测为 3–4 个百分点"
+            "（最近一次两轮为 0–3.4pp，见 `docs/03b-重复性检验.md`）。本表是**单次运行**结果，"
             "任何小于该量级的组间差异都不应被解释为模块效果。",
             "",
         ]
