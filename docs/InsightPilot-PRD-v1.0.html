@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>InsightPilot 自助问数 · PRD v1.0</title>
+<style>
+  @page { size: A4; margin: 0; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #fff; }
+  body { font-family: "Microsoft YaHei", "微软雅黑", sans-serif; color: #2b3038; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .page { width: 595.5pt; padding: 14pt 40pt 0 40pt; }
+
+  .kicker { font-size: 8pt; color: #1a56db; letter-spacing: 1.2pt; font-weight: 700; }
+  h1 { font-size: 19pt; font-weight: 700; color: #14181f; margin: 3pt 0 0 0; letter-spacing: .3pt; }
+  .sub { font-size: 9pt; color: #6b7280; margin-top: 4pt; }
+  .sub b { color: #2b3038; font-weight: 700; }
+
+  h2 { font-size: 9.6pt; font-weight: 700; color: #14181f; margin: 6.6pt 0 0 0; padding-bottom: 1.4pt; border-bottom: .9pt solid #d7dde5; }
+  h2 .n { color: #1a56db; margin-right: 5pt; }
+  p { font-size: 8.6pt; line-height: 11.7pt; margin: 2.4pt 0 0 0; text-align: justify; }
+  p b { color: #14181f; }
+  .lead { background: #f6f9fd; border-left: 2.2pt solid #1a56db; padding: 4pt 8pt; margin-top: 3pt; }
+
+  table { width: 100%; border-collapse: collapse; margin-top: 4pt; }
+  th, td { font-size: 8.2pt; line-height: 11.2pt; text-align: left; padding: 2.1pt 5pt; border-bottom: .5pt solid #e6eaef; vertical-align: top; }
+  th { background: #f2f5f9; color: #3d4655; font-weight: 700; font-size: 8pt; }
+  td.k { color: #1a56db; font-weight: 700; white-space: nowrap; }
+
+  ol, ul { margin: 3pt 0 0 0; padding-left: 13pt; }
+  li { font-size: 8.6pt; line-height: 11.9pt; margin-top: 1.2pt; text-align: justify; }
+  li b { color: #14181f; }
+  .flow { display: flex; align-items: center; margin-top: 4.5pt; flex-wrap: wrap; }
+  .step { font-size: 7.6pt; color: #1a3a6b; background: #eef4ff; border-radius: 2pt; padding: 2pt 5pt; }
+  .arrow { font-size: 7pt; color: #9aa5b1; margin: 0 2.6pt; }
+  .foot { margin-top: 4pt; padding-top: 4pt; border-top: .6pt solid #e6eaef; font-size: 7.6pt; color: #7b8494; line-height: 11pt; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="kicker">PRODUCT REQUIREMENT DOCUMENT · v1.0</div>
+  <h1>InsightPilot · 自助问数</h1>
+  <div class="sub">作者 <b>何志伟</b>　｜　角色 产品 + 实现（0→1 独立完成）　｜　更新时间 2026.11　｜　状态 V1 已交付</div>
+
+  <div class="lead">
+    <p style="margin-top:0"><b>一句话：</b>让不会写 SQL 的业务同学用中文提问就能自己拿到数字，并且<b>每个数字都能自证</b>（附 SQL、结果集、口径说明）。</p>
+  </div>
+
+  <h2><span class="n">1</span>背景与要解决的问题</h2>
+  <p>中小电商 / 内容团队里，业务同学要一个数字（"昨天精装书卖了几本""各出版社均价差多少"），流程是：提需求 → 找数据同学排期 → 等一条 SQL → 拿到一张没有上下文的表。一次<b>一天起</b>，而且拿到数字的人无法确认它是怎么算出来的。买了 BI 的团队卡在另一头：报表配好了，问题一变还得找人重新配。</p>
+  <p>真正卡住的不是"查得到"，是<b>查得快 + 敢用</b>：口径要一致、数字要能复核、答不了的时候要说答不了。</p>
+
+  <h2><span class="n">2</span>目标用户与场景</h2>
+  <table>
+    <tr><th style="width:16%">角色</th><th style="width:30%">典型问题</th><th style="width:28%">现在怎么做</th><th style="width:26%">期望</th></tr>
+    <tr><td class="k">运营</td><td>昨天各分类销量多少？哪个掉了？</td><td>提需求、等排期，一天起</td><td>1 分钟内自助拿到，可自己追问</td></tr>
+    <tr><td class="k">分析</td><td>精装比平装贵多少，按出版社拆</td><td>自己写 SQL，口径每次重算一遍</td><td>复用已定义口径，结果可直接引用</td></tr>
+    <tr><td class="k">管理层</td><td>"均价"到底含不含赠品？</td><td>问三个人得到三个答案</td><td>口径可查，答案自带脚注</td></tr>
+  </table>
+
+  <h2><span class="n">3</span>目标与非目标（明确不做的事）</h2>
+  <p><b>目标：</b>单轮问数答对率 ≥ 50%（60 题基线）｜答案可复核率 100%（每条答案附 SQL 与结果集）｜p50 ≤ 8s｜单题成本 ≤ ¥0.01。</p>
+  <p><b>非目标（本期不做）：</b>报表配置与定时订阅、复杂多表建模、图表自由编辑、多租户与行级权限、移动端。理由是这五项都会把产品从"回答问题"拖向"配置系统"，而后者已有成熟工具。</p>
+
+  <h2><span class="n">4</span>主流程</h2>
+  <div class="flow">
+    <span class="step">提问</span><span class="arrow">›</span><span class="step">意图识别</span><span class="arrow">›</span><span class="step">口径澄清</span><span class="arrow">›</span><span class="step">语义层三路召回</span><span class="arrow">›</span><span class="step">生成 SQL</span><span class="arrow">›</span><span class="step">安全校验 / 执行</span><span class="arrow">›</span><span class="step">结果解读与选图</span><span class="arrow">›</span><span class="step">结论自检</span>
+  </div>
+  <p>两条反馈回路：执行失败 → 错误信息 + 原 SQL + 相关表卡片回灌重写（最多 3 次）；结论自检不通过 → 打回重算。全过程落 trace，可逐节点回看。</p>
+
+  <h2><span class="n">5</span>三个关键产品决策</h2>
+  <table>
+    <tr><th style="width:22%">决策</th><th style="width:40%">做法</th><th style="width:38%">为什么这样取舍</th></tr>
+    <tr><td class="k">D1 模糊词不追问</td><td>"最近 / 最好 / 热门"一律采用<b>显式默认口径并标注</b>；只有涉及不同表、会算错数时才回问。</td><td>每次追问都是一次打断，连问三次用户就走了；宁可给一个标注了口径的答案，让用户自己能纠正。</td></tr>
+    <tr><td class="k">D2 数字不许模型口述</td><td>结论句必须绑定结果集里的具体值，由代码计算；对不上就打回。</td><td>用户信不信这个答案，取决于能不能复核。一个编出来的数字比没有数字更糟。</td></tr>
+    <tr><td class="k">D3 答不了就说答不了</td><td>样本量 &lt; 30 条时显式提示"仅供参考"；数据不支持时直接拒绝并说明缺什么。</td><td>错答的代价远高于不答。产品可信度一旦被一次错答击穿，用户就不会再用第二次。</td></tr>
+  </table>
+
+  <h2><span class="n">6</span>验收指标与版本对比方法</h2>
+  <table>
+    <tr><th style="width:18%">层级</th><th style="width:34%">指标</th><th style="width:20%">当前值</th><th style="width:28%">判定口径</th></tr>
+    <tr><td class="k">北极星</td><td>单轮问数答对率</td><td><b>50.0%</b>（基线 18.3%）</td><td>结果集等价：列名/行序无关，<span style="white-space:nowrap">1e-6 容差</span></td></tr>
+    <tr><td class="k">护栏 1</td><td>列覆盖</td><td>57.5%</td><td>答案是否覆盖了应给的维度，避免"对了但没用"</td></tr>
+    <tr><td class="k">护栏 2</td><td>响应与性价比</td><td>p50 5.7s ／ ¥0.005 每问</td><td>同问命中缓存 0.04s</td></tr>
+    <tr><td class="k">护栏 3</td><td>安全</td><td>54 条用例全通过</td><td>写操作 / ATTACH / PRAGMA / 系统表一律拦截</td></tr>
+  </table>
+  <p><b>版本对比方法：</b>60 题 × 4 种策略配置 × 每配置 2 轮，两轮波动 <b>0–3.4pp</b>；差异小于波动幅度的改动不算改进。这条规则是为了防止"改一版跑一次就宣布提升"。</p>
+
+  <h2><span class="n">7</span>能力边界（做不到的部分，写在产品里）</h2>
+  <ul>
+    <li><b>趋势 / 同比环比答不了：</b><span style="white-space:nowrap">dim_date</span> 仅 15 行、事实表日期几乎单值，算不出时间序列；产品明确回"数据不支持"，而不是画一条错曲线。</li>
+    <li><b>仅支持文本提问：</b>不支持截图、表格上传、语音（多模态未接入）。</li>
+    <li><b>无权限体系：</b>只适合单团队内部使用，不支持多租户与行级权限，接入企业环境前必须补。</li>
+  </ul>
+
+  <h2><span class="n">8</span>迭代计划</h2>
+  <p><b>V1（已交付）：</b>单轮问数、多轮追问、口径默认与脚注、评测页与消融对比、全链路 trace、安全沙箱。</p>
+  <p><b>V2 候选（按预期影响排序）：</b>① 口径收藏与复用 → ② 带 SQL 与脚注的结果分享链接 → ③ 失败问题回流语义层（答错的题变成新表卡片）→ ④ 多轮澄清 → ⑤ 权限与多租户。</p>
+
+  <div class="foot">附：评测与消融 <b>docs/03-评测报告.md</b>　｜　可点原型 <b>docs/prototype/index.html</b>　｜　github.com/heji110705/InsightPilot</div>
+</div>
+</body>
+</html>
