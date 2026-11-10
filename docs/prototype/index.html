@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>InsightPilot · 可点原型（5 屏）</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 rx=%228%22 fill=%22%231a56db%22/%3E%3Crect x=%228%22 y=%229%22 width=%2216%22 height=%223%22 rx=%221.5%22 fill=%22%23fff%22/%3E%3Crect x=%228%22 y=%2220%22 width=%2216%22 height=%223%22 rx=%221.5%22 fill=%22%23fff%22 opacity=%22.55%22/%3E%3C/svg%3E">
 <style>
   :root{
     --blue:#1a56db; --blue-weak:#eef4ff; --ink:#141a22; --ink2:#3d4655; --mut:#7b8494;
@@ -210,6 +211,43 @@
   .qitem.miss span{color:#c0705a;}
   .flash{animation:fl 1.2s ease;}
   @keyframes fl{0%{background:#eef4ff}100%{background:transparent}}
+
+  /* ---------- 结果卡（提问后主区出答案） ---------- */
+  .rcard{margin-top:14px;border:1px solid #dde4ee;border-radius:12px;background:#fff;
+    box-shadow:0 6px 20px rgba(20,30,50,.06);overflow:hidden;animation:rc .18s ease}
+  @keyframes rc{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  .rhead{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;
+    background:#f7f9fc;border-bottom:1px solid var(--line)}
+  .rq{font-size:12.5px;font-weight:700;color:var(--ink);line-height:1.5}
+  .rq::before{content:"问";color:#9aa4b2;font-weight:400;margin-right:6px;font-size:10.5px}
+  .rpills{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--mut);white-space:nowrap}
+  .rbody{padding:14px 16px 13px}
+  .rcard .big{font-size:40px;margin:3px 0 2px}
+  .rcard .concl{margin:4px 0 12px;font-size:13px;line-height:1.75}
+  .rcard table.rt{margin-top:0}
+  .rcard .meta2{margin-top:8px}
+  .rcard .note{margin-top:10px}
+  .sqlwrap{margin-top:10px;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .sqlwrap>summary{cursor:pointer;list-style:none;font-size:11.5px;color:var(--ink2);padding:8px 11px;background:#fafbfd}
+  .sqlwrap>summary::-webkit-details-marker{display:none}
+  .sqlwrap>summary::before{content:"▸ ";color:var(--mut)}
+  .sqlwrap[open]>summary::before{content:"▾ "}
+  .sqlwrap .code{margin:0;border-radius:0}
+  .racts{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+  .act2{font-family:inherit;font-size:11.5px;color:var(--ink2);border:1px solid var(--line);background:#fff;
+    border-radius:7px;padding:6px 11px;cursor:pointer}
+  .act2:hover{border-color:#bcd0f5;color:var(--blue)}
+  .rcard.miss{border-color:#f0d5cc}
+  .rcard.miss .rhead{background:#fdf4f0;border-bottom-color:#f0dcd4}
+  .hero.answered{padding-top:20px}
+  .hero.answered h2,.hero.answered .lead,.hero.answered .edge{display:none}
+  .stage.tall{height:auto;min-height:616px}
+  .stage.tall .screen{position:static;inset:auto}
+  .clearx.arm{color:#d97757;font-weight:700;text-decoration:none}
+  .toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(8px);background:#141a22;
+    color:#fff;font-size:12px;padding:9px 14px;border-radius:8px;opacity:0;pointer-events:none;
+    transition:.2s;z-index:99;max-width:82vw;text-align:center;line-height:1.6}
+  .toast.on{opacity:.95;transform:translateX(-50%)}
 </style>
 </head>
 <body>
@@ -259,6 +297,7 @@
               </div>
             </div>
             <div class="qmsg" id="qmsg" hidden></div>
+            <div id="rcard" hidden aria-live="polite"></div>
             <div class="chips">
               <div class="chipx">精装书有多少本</div>
               <div class="chipx">各分类平均价格</div>
@@ -320,13 +359,13 @@
           <div class="resmain">
             <div class="sum">共 1 行结果</div>
             <div class="big">63<small>本</small></div>
-            <div class="concl">当前库共有 <b>63 本精装书</b>，占全部在架图书的 12.9%。</div>
+            <div class="concl">当前库共有 <b>63 本精装书</b>，占全部 250 本图书的 25.2%。</div>
 
             <table class="rt">
               <tr><th style="width:45%">binding（装帧）</th><th>count</th></tr>
               <tr><td>精装</td><td>63</td></tr>
             </table>
-            <div class="meta2">返回 1 行 · 耗时 5.71s · 缓存未命中 · 扫描行数 494</div>
+            <div class="meta2">返回 1 行 · 耗时 5.71s · 缓存未命中 · 扫描 250 行</div>
 
             <div class="code">
               <div class="t">生成的 SQL（可复制复核）</div>
@@ -335,7 +374,7 @@
 <span class="k">WHERE</span> binding = <span class="s">'精装'</span>;</pre>
             </div>
 
-            <div class="note"><b>口径脚注：</b>装帧取自 <code>dim_book.binding</code>，“精装”不含“精装典藏”等变体；统计范围为全部在架图书，不做时间过滤。</div>
+            <div class="note"><b>口径脚注：</b>装帧取自 <code>dim_book.binding</code>，“精装”不含“精装典藏”等变体；统计范围为全部 250 本图书，不做时间过滤。</div>
 
             <div class="acts">
               <div class="act">复制 SQL</div><div class="act">导出 CSV</div><div class="act">看执行计划</div><div class="act">换口径重算</div><div class="act">看本轮 trace</div>
@@ -458,7 +497,7 @@ const NOTES = [
   [["进度要可解释","六个节点逐一显示<b>而不是一个转圈</b>：用户能看到卡在哪一步，也知道系统在做什么，等 5 秒不会觉得死机。"],
    ["召回结果透明","命中几张表卡片、几个指标都写出来，<b>答错时可追到召回环节</b>，而不是只看到一条错 SQL。"],
    ["trace 右边常驻","每步耗时与关键参数实时落盘，<b>右侧就是排障入口</b>，也是后续做失败归因的数据源。"]],
-  [["结论绑数字","结论句里的 63 和 12.9% <b>都由代码从结果集算出</b>，模型只负责组织语言，杜绝编数。"],
+  [["结论绑数字","结论句里的 63 和 25.2% <b>都由代码从结果集算出</b>，模型只负责组织语言，杜绝编数。"],
    ["SQL 可复制","把 SQL 摆在答案下面而不是藏进“高级”，<b>可复核是产品的核心卖点</b>，不是技术细节。"],
    ["口径脚注必带","每个答案都挂口径说明：取哪个字段、含不含变体、有没有时间过滤。<b>这是“敢用”的来源</b>。"]],
   [["默认口径 + 标注","模糊词不追问，先给标注过的答案。<b>追问是打断，打断三次用户就走</b>。"],
@@ -482,115 +521,418 @@ function show(i){
   notesEl.innerHTML = NOTES[i].map(([h,p])=>`<div class="ncard"><h6>${h}</h6><p>${p}</p></div>`).join('');
 }
 tabs.forEach(t=>t.addEventListener('click',()=>show(+t.dataset.i)));
-document.addEventListener('keydown',e=>{
-  const cur = tabs.findIndex(t=>t.classList.contains('on'));
-  if(e.key==='ArrowRight') show((cur+1)%5);
-  if(e.key==='ArrowLeft') show((cur+4)%5);
-});
 show(0);
-/* ============ 会话存储：本机持久化（云服务未开通时的落地实现） ============ */
-(function(){
+/* ============ 结果渲染 + 会话存储（本机持久化，内存优先） ============ */
+(function () {
   const KEY = 'insightpilot.prototype.v1';
+  const MAX_TURNS = 30;
+
+  /* ------------------------------------------------------------------
+     内置问答：数字全部由 data/warehouse.sqlite 直接查询得到
+     （dim_book 250 行 / fact_comment 1976 行），SQL 原样附在结果里可复核。
+     耗时字段只有跑过完整链路的 3 条才有，其余标「未计时」，不编造延迟。
+  ------------------------------------------------------------------ */
+  const A = {
+    '精装书有多少本': {
+      status: '已复核', ms: '5.71s', sum: '共 1 行结果',
+      big: '63', unit: '本',
+      concl: '当前库共有 <b>63 本精装书</b>，占全部 250 本图书的 25.2%。',
+      cols: ['binding（装帧）', 'cnt'],
+      rows: [['精装', '63']],
+      meta: '返回 1 行 · 耗时 5.71s · 缓存未命中 · 扫描 250 行',
+      sql: "SELECT COUNT(*) AS cnt\nFROM dim_book\nWHERE binding = '精装';",
+      foot: '装帧取自 <code>dim_book.binding</code>，精确匹配「精装」，不含「精装16开 / 精装典藏」等变体；统计范围为全部 250 本，不做时间过滤。',
+      s3: true
+    },
+    '各分类平均价格': {
+      status: '已复核', ms: '5.48s', sum: '共 12 行结果',
+      big: '12', unit: '个分类',
+      concl: '12 个分类都有在架图书；均价最高的是艺术设计 <b>¥100.20</b>（5 本），最低的是诗歌散文 <b>¥20.86</b>（22 本）。',
+      cols: ['category（分类）', 'cnt', 'avg_price'],
+      rows: [
+        ['文学小说', '139', '43.77'], ['诗歌散文', '22', '20.86'],
+        ['历史人文', '21', '72.72'], ['传记纪实', '15', '45.96'],
+        ['哲学宗教', '12', '24.68'], ['少儿读物', '11', '75.35'],
+        ['社会科学', '11', '53.35'], ['科学科普', '5', '43.20'],
+        ['艺术设计', '5', '100.20'], ['心理励志', '4', '82.22'],
+        ['经济管理', '4', '60.75'], ['语言文化', '1', '21.00']
+      ],
+      meta: '返回 12 行 · 耗时 5.48s · 缓存未命中 · 扫描 250 行',
+      sql: "SELECT category,\n       COUNT(*)             AS cnt,\n       ROUND(AVG(price), 2) AS avg_price\nFROM dim_book\nGROUP BY category\nORDER BY cnt DESC;",
+      foot: '均价 = <code>AVG(dim_book.price)</code>（订单实付价，含运费），不剔除极值；统计全部 250 本，不做时间过滤。口径页可切换「剔除 1%–99% 极值」重算。'
+    },
+    '评论最多的书是哪本': {
+      status: '已复核', ms: '0.04s', sum: '共 5 行结果',
+      big: '17', unit: '条评论',
+      concl: '《陆犯焉识》收到 <b>17 条评论</b>，为全库最多；其后是《我的阿勒泰》16 条、《美的历程》15 条。',
+      cols: ['title（书名）', 'cnt'],
+      rows: [['陆犯焉识', '17'], ['我的阿勒泰', '16'], ['美的历程', '15'], ['嫌疑人X的献身', '14'], ['庄子', '14']],
+      meta: '返回 5 行 · 同问命中缓存 0.04s · 未重复调用模型',
+      sql: "SELECT b.title, COUNT(*) AS cnt\nFROM fact_comment f\nJOIN dim_book b ON b.book_id = f.book_id\nGROUP BY b.title\nORDER BY cnt DESC, b.title\nLIMIT 5;",
+      foot: '评论数取 <code>fact_comment</code> 的行数，按书目聚合；同一用户多次评论重复计入，不做去重——这是与「评论人数」的口径差别。'
+    },
+    '平装有多少本': {
+      status: '已复核', ms: '—', sum: '共 1 行结果',
+      big: '181', unit: '本',
+      concl: '当前库共有 <b>181 本平装书</b>，占全部 250 本的 72.4%；另有 6 本为软精装 / 套装 / 装帧缺失等长尾。',
+      cols: ['binding（装帧）', 'cnt'],
+      rows: [['平装', '181']],
+      meta: '返回 1 行 · 本机实查（未计时） · 扫描 250 行',
+      sql: "SELECT COUNT(*) AS cnt\nFROM dim_book\nWHERE binding = '平装';",
+      foot: '与「精装」同一口径：精确匹配装帧值，不合并变体。平装 + 精装 = 244 本，剩余 6 本装帧值杂乱，单独列出而不并入任何一类。'
+    },
+    '精装与平装的平均价格差多少': {
+      status: '已复核', ms: '—', sum: '共 2 行结果',
+      big: '20.29', unit: '元/本',
+      concl: '精装均价 <b>¥61.01</b>，平装 <b>¥40.72</b>，相差 <b>¥20.29/本</b>，精装比平装高 49.8%。',
+      cols: ['binding（装帧）', 'cnt', 'avg_price'],
+      rows: [['精装', '63', '61.01'], ['平装', '181', '40.72']],
+      meta: '返回 2 行 · 本机实查（未计时） · 扫描 250 行',
+      sql: "SELECT binding,\n       COUNT(*)             AS cnt,\n       ROUND(AVG(price), 2) AS avg_price\nFROM dim_book\nWHERE binding IN ('精装', '平装')\nGROUP BY binding;",
+      foot: '只比较「精装」「平装」两种装帧，长尾装帧（6 本）不参与，否则组间样本极不均衡；差值按两组合并后的均值口径计算，非逐本配对。'
+    },
+    '精装书里评分最高的是哪本': {
+      status: '已复核', ms: '—', sum: '共 3 行结果',
+      big: '9.46', unit: '分',
+      concl: '《悉达多：一首印度的诗》评分最高 <b>9.46</b>（20 人评分），其后是《刘擎西方现代思想讲义》9.45、《白夜行》9.44。',
+      cols: ['title（书名）', 'rating_avg', 'rating_count'],
+      rows: [['悉达多: 一首印度的诗', '9.46', '20'], ['刘擎西方现代思想讲义', '9.45', '13'], ['白夜行', '9.44', '17']],
+      meta: '返回 3 行 · 本机实查（未计时） · 扫描 63 行',
+      sql: "SELECT title, rating_avg, rating_count\nFROM dim_book\nWHERE binding = '精装'\nORDER BY rating_avg DESC, rating_count DESC\nLIMIT 3;",
+      foot: '评分取 <code>rating_avg</code>；同分时按 <code>rating_count</code> 降序，避免「1 人打 10 分」靠并列排到第一——只按均分排序是这个题最常见的坑。'
+    }
+  };
+
+  const ALIAS = {
+    '精装书占全部图书多少': '精装书有多少本',
+    '精装书占比是多少': '精装书有多少本',
+    '平装书有多少本': '平装有多少本',
+    '平装有几本': '平装有多少本',
+    '各分类的平均价格': '各分类平均价格',
+    '每个分类的平均价格': '各分类平均价格',
+    '哪本书评论最多': '评论最多的书是哪本',
+    '评论最多的是哪本书': '评论最多的书是哪本',
+    '精装和平装哪个贵': '精装与平装的平均价格差多少',
+    '精装比平装贵多少': '精装与平装的平均价格差多少',
+    '精装书里评分最高': '精装书里评分最高的是哪本',
+    '评分最高的精装书': '精装书里评分最高的是哪本'
+  };
+
+  const SUGGEST = ['平装有多少本', '精装与平装的平均价格差多少', '评论最多的书是哪本'];
+  const S3_SQL = A['精装书有多少本'].sql;
+
   const SEED_TURNS = [
-    { q:'精装书有多少本',      r:'63 本 · 5.71s' },
-    { q:'各分类平均价格',      r:'12 个分类 · 5.48s' },
-    { q:'评论最多的书是哪本',  r:'命中缓存 · 0.04s' }
+    { q: '精装书有多少本', r: '63 本 · 5.71s' },
+    { q: '各分类平均价格', r: '12 个分类 · 5.48s' },
+    { q: '评论最多的书是哪本', r: '命中缓存 · 0.04s' }
   ];
-  const SEED_CAL = ['均价 · 实付价含运费，不剔极值','销量 · 按下单件数，不含退货','评分 · 全部评价，含无文字评分'];
-  const ANSWERS  = { '精装书有多少本':'63 本 · 5.71s', '各分类平均价格':'12 个分类 · 5.48s', '评论最多的书是哪本':'命中缓存 · 0.04s' };
+  const SEED_CAL = ['均价 · 实付价含运费，不剔极值', '销量 · 按下单件数，不含退货', '评分 · 全部评价，含无文字评分'];
 
-  let ok = true;
-  try { window.localStorage.setItem(KEY+'__t','1'); window.localStorage.removeItem(KEY+'__t'); } catch(e){ ok = false; }
+  /* ---------- 存储：内存是唯一真相，localStorage 只负责跨刷新 ---------- */
+  let mem = null;
+  let persisted = true;
+  try {
+    window.localStorage.setItem(KEY + '__t', '1');
+    window.localStorage.removeItem(KEY + '__t');
+  } catch (e) { persisted = false; }
 
-  function fresh(){ return { v:1, turns: SEED_TURNS.map(function(t){ return { q:t.q, r:t.r }; }), misses: [], calibers: SEED_CAL.slice() }; }
-  function read(){
-    if(!ok) return null;
-    try{
+  function fresh() {
+    return { v: 1, turns: SEED_TURNS.map(function (t) { return { q: t.q, r: t.r }; }), misses: [], calibers: SEED_CAL.slice() };
+  }
+  function readLS() {
+    if (!persisted) return null;
+    try {
       const raw = window.localStorage.getItem(KEY);
-      if(!raw) return null;
+      if (!raw) return null;
       const st = JSON.parse(raw);
-      if(!st || !Array.isArray(st.turns) || !Array.isArray(st.calibers)) return null;
-      if(!Array.isArray(st.misses)) st.misses = [];
+      if (!st || !Array.isArray(st.turns) || !Array.isArray(st.calibers)) return null;
+      if (!Array.isArray(st.misses)) st.misses = [];
       return st;
-    }catch(e){ return null; }
+    } catch (e) { return null; }
   }
-  function save(st){
-    if(!ok) return false;
-    try{ window.localStorage.setItem(KEY, JSON.stringify(st)); return true; }
-    catch(e){ ok = false; return false; }
+  function commit() {
+    if (!mem) return false;
+    try { window.localStorage.setItem(KEY, JSON.stringify(mem)); persisted = true; return true; }
+    catch (e) { persisted = false; return false; }
   }
-  function state(){ const st = read(); if(st) return st; const f = fresh(); save(f); return f; }
+  function state() {
+    if (mem) return mem;
+    mem = readLS();
+    if (!mem) { mem = fresh(); commit(); }
+    return mem;
+  }
 
-  function esc(t){ return String(t).replace(/[&<>"]/g, function(c){
-    return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' })[c]; }); }
-  function norm(t){ return String(t).replace(/[\s？?。.,，！!、]/g,'').toLowerCase(); }
+  const esc = function (t) {
+    return String(t).replace(/[&<>"]/g, function (c) {
+      return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c];
+    });
+  };
+  const norm = function (t) { return String(t).replace(/[\s？?。.,，！!、：:；;'"“”‘’]/g, '').toLowerCase(); };
 
+  function resolve(v) {
+    const k = norm(v);
+    if (A[v]) return A[v];
+    for (const name in A) { if (norm(name) === k) return A[name]; }
+    for (const a in ALIAS) { if (norm(a) === k) return A[ALIAS[a]]; }
+    return null;
+  }
+
+  /* ---------- DOM ---------- */
   const turnsEl = document.getElementById('turns');
-  const calEl   = document.getElementById('calibers');
-  const noteEl  = document.getElementById('storenote');
-
-  function render(){
-    const st = state();
-    turnsEl.innerHTML = st.turns.map(function(t){
-      const cls  = 'qitem' + (t.mine ? (t.miss ? ' miss' : ' mine') : '');
-      const meta = (t.miss ? '未命中 · 已回流语义层' : esc(t.r || '—')) + (t.mine ? ' · 本机记录' : '');
-      return '<div class="' + cls + '">' + esc(t.q) + '<span>' + meta + '</span></div>';
-    }).join('');
-    calEl.innerHTML = st.calibers.map(function(c){ return '<div class="qitem">' + esc(c) + '</div>'; }).join('');
-    const n = st.turns.filter(function(t){ return t.mine; }).length;
-    noteEl.textContent = ok
-      ? ('本机会话 · 已保存 ' + n + ' 条' + (st.misses.length ? (' · 未命中 ' + st.misses.length + ' 条') : '') + ' ｜ 刷新后仍在')
-      : '当前浏览器禁用了本地存储，本次会话不会保留';
-  }
-
+  const calEl = document.getElementById('calibers');
+  const noteEl = document.getElementById('storenote');
   const qin = document.getElementById('qin');
   const btn = document.getElementById('askbtn');
   const box = document.getElementById('askbox');
   const msg = document.getElementById('qmsg');
+  const card = document.getElementById('rcard');
+  const hero = document.querySelector('.hero');
+  const stage = document.getElementById('stage');
+  const origShow = show;
+  show = function (i) {
+    origShow(i);
+    if (i === 0) { if (!card.hidden) stage.classList.add('tall'); }
+    else { stage.classList.remove('tall'); }
+  };
+  const clearBtn = document.getElementById('clear');
+  let curSql = '';
 
-  function say(html, good){
+  /* ---------- 渲染列表 ---------- */
+  function render() {
+    const st = state();
+    turnsEl.innerHTML = st.turns.slice(0, MAX_TURNS).map(function (t) {
+      const cls = 'qitem' + (t.mine ? (t.miss ? ' miss' : ' mine') : '');
+      const meta = (t.miss ? '未命中 · 已回流语义层' : esc(t.r || '—')) + (t.mine ? ' · 本机记录' : '');
+      return '<div class="' + cls + '">' + esc(t.q) + '<span>' + meta + '</span></div>';
+    }).join('');
+    calEl.innerHTML = st.calibers.map(function (c) { return '<div class="qitem">' + esc(c) + '</div>'; }).join('');
+    const n = st.turns.filter(function (t) { return t.mine; }).length;
+    noteEl.textContent = persisted
+      ? ('本机会话 · 已保存 ' + n + ' 条' + (st.misses.length ? (' · 未命中 ' + st.misses.length + ' 条') : '') + ' ｜ 刷新后仍在')
+      : ('本地存储不可用：本次会话只存在当前页面（' + n + ' 条），刷新即丢');
+  }
+
+  /* ---------- 渲染结果卡 ---------- */
+  function say(html, good) {
     msg.hidden = false;
     msg.className = 'qmsg' + (good ? ' ok' : '');
     msg.innerHTML = html;
   }
+  function hideMsg() { msg.hidden = true; msg.innerHTML = ''; }
 
-  function submit(){
-    const v = qin.value.trim();
-    if(!v){ box.classList.add('err'); qin.focus(); return; }
+  function openCard() {
+    card.hidden = false;
+    hero.classList.add('answered');
+    stage.classList.add('tall');
+  }
+  function closeCard() {
+    card.hidden = true;
+    card.innerHTML = '';
+    hero.classList.remove('answered');
+    stage.classList.remove('tall');
+    curSql = '';
+  }
+
+  function renderHit(a, asked) {
+    const head = a.rows[0].map(function (_, i) { return '<th>' + esc(a.cols[i]) + '</th>'; }).join('');
+    const body = a.rows.map(function (r) {
+      return '<tr>' + r.map(function (c) { return '<td>' + esc(c) + '</td>'; }).join('') + '</tr>';
+    }).join('');
+    curSql = a.sql;
+    card.className = 'rcard';
+    card.innerHTML =
+      '<div class="rhead"><div class="rq">' + esc(asked) + '</div>' +
+      '<div class="rpills"><span class="pill ok">' + esc(a.status) + '</span><span class="rtime">' + esc(a.ms) + '</span></div></div>' +
+      '<div class="rbody">' +
+      '<div class="sum">' + esc(a.sum) + '</div>' +
+      '<div class="big">' + a.big + '<small>' + esc(a.unit) + '</small></div>' +
+      '<div class="concl">' + a.concl + '</div>' +
+      '<table class="rt"><tr>' + head + '</tr>' + body + '</table>' +
+      '<div class="meta2">' + esc(a.meta) + '</div>' +
+      '<details class="sqlwrap"><summary>生成的 SQL（可复制复核）</summary>' +
+      '<div class="code"><pre>' + esc(a.sql) + '</pre></div></details>' +
+      '<div class="note">' + a.foot + '</div>' +
+      '<div class="racts">' +
+      '<button class="act2" data-act="copy" type="button">复制 SQL</button>' +
+      (a.s3 ? '<button class="act2" data-act="s3" type="button">第 3 屏：完整复核视图</button>' : '') +
+      '<button class="act2" data-act="again" type="button">再问一句</button>' +
+      '<button class="act2" data-act="close" type="button">收起</button>' +
+      '</div></div>';
+    openCard();
+  }
+
+  function renderMiss(asked) {
+    curSql = '';
+    card.className = 'rcard miss';
+    card.innerHTML =
+      '<div class="rhead"><div class="rq">' + esc(asked) + '</div>' +
+      '<div class="rpills"><span class="pill warn">答不了</span></div></div>' +
+      '<div class="rbody">' +
+      '<div class="concl"><b>这条答不了，不猜。</b>原型只内置了 6 条问答（数字由 ' +
+      '<code>warehouse.sqlite</code> 直接查出），任意问题要本地跑完整链路。</div>' +
+      '<div class="sum">换成这几条能立刻出结果：</div>' +
+      '<div class="chips" style="margin-top:8px">' +
+      SUGGEST.map(function (s) { return '<div class="chipx">' + esc(s) + '</div>'; }).join('') +
+      '</div>' +
+      '<div class="note">已记入「未命中」并回流语义层——这是口径库和范例 SQL 的扩写入口，也是这套系统越用越准的原因。</div>' +
+      '<div class="racts"><button class="act2" data-act="again" type="button">重新提问</button>' +
+      '<button class="act2" data-act="close" type="button">收起</button></div>' +
+      '</div>';
+    openCard();
+  }
+
+  /* ---------- 提交 ---------- */
+  function submit(text) {
+    const v = (text === undefined ? qin.value : text).trim();
+    if (!v) {
+      box.classList.add('err');
+      say('先写一句要问的问题，比如「精装书有多少本」。', false);
+      qin.focus();
+      return;
+    }
     box.classList.remove('err');
-    const key = norm(v);
-    let hit = null;
-    Object.keys(ANSWERS).forEach(function(k){ if(norm(k) === key) hit = k; });
+    hideMsg();
+    const a = resolve(v);
     const st = state();
-    if(hit){
-      st.turns = st.turns.filter(function(t){ return norm(t.q) !== norm(hit); });
-      st.turns.unshift({ q: hit, r: ANSWERS[hit], mine: true });
-      save(st); render(); qin.value = '';
-      say('<b>已记入本次会话</b>（本机存储，刷新后仍在）。第 3 屏演示的就是这条问题的结果与复核。', true);
-    }else{
-      st.turns = st.turns.filter(function(t){ return norm(t.q) !== key; });
+    st.turns = st.turns.filter(function (t) { return norm(t.q) !== norm(v); });
+    if (a) {
+      st.turns.unshift({ q: v, r: a.big + ' ' + a.unit, mine: true });
+    } else {
       st.turns.unshift({ q: v, r: '', miss: true, mine: true });
-      st.misses = [v].concat(st.misses.filter(function(x){ return norm(x) !== key; })).slice(0, 20);
-      save(st); render(); qin.value = '';
-      say('<b>这条答不了。</b>原型没有接数据源，只有示例问题是真实运行结果；真实取数要在本地跑项目。已记入「未命中」，按设计回流语义层待补。', false);
+      st.misses = [v].concat(st.misses.filter(function (x) { return norm(x) !== norm(v); })).slice(0, 20);
+    }
+    st.turns = st.turns.slice(0, MAX_TURNS);
+    commit();
+    render();
+    if (a) { renderHit(a, v); } else { renderMiss(v); }
+    qin.value = '';
+    if (!persisted) {
+      say('结果在上面。注意：本地存储不可用，这条记录刷新后会丢。', false);
+    }
+    if (window.matchMedia('(max-width:640px)').matches) {
+      setTimeout(function () { card.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 60);
     }
   }
 
-  btn.addEventListener('click', submit);
-  qin.addEventListener('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); submit(); } });
-  qin.addEventListener('input', function(){ box.classList.remove('err'); });
+  /* ---------- 提示条 ---------- */
+  let toastTimer = null;
+  function toast(t) {
+    let el = document.getElementById('toast');
+    if (!el) { el = document.createElement('div'); el.id = 'toast'; el.className = 'toast'; document.body.appendChild(el); }
+    el.textContent = t;
+    el.classList.add('on');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.classList.remove('on'); }, 1800);
+  }
 
-  document.querySelectorAll('.chipx').forEach(function(c){
-    c.addEventListener('click', function(){ qin.value = c.textContent.trim(); show(0); qin.focus(); });
+  function copy(text) {
+    if (!text) { toast('没有可复制的 SQL'); return; }
+    const done = function () { toast('SQL 已复制，可直接贴进只读连接复核'); };
+    const fallback = function () {
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.setAttribute('readonly', '');
+      ta.style.cssText = 'position:fixed;top:-1000px;opacity:0';
+      document.body.appendChild(ta); ta.select();
+      let ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+      ta.remove();
+      ok ? done() : toast('浏览器不允许自动复制，请展开 SQL 手动选择');
+    };
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(done, fallback);
+    } else { fallback(); }
+  }
+
+  /* ---------- 事件 ---------- */
+  btn.addEventListener('click', function () { submit(); });
+  qin.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter') return;
+    if (e.isComposing || e.keyCode === 229) return; // 中文输入法选词时的 Enter 不算提交
+    e.preventDefault();
+    submit();
+  });
+  qin.addEventListener('input', function () { box.classList.remove('err'); });
+
+  /* 示例 / 推荐问题：点一下直接出结果，不再要求用户点第二次 */
+  document.addEventListener('click', function (e) {
+    const chip = e.target.closest('.chipx');
+    if (chip) {
+      show(0);
+      submit(chip.textContent.trim());
+      return;
+    }
+    const act = e.target.closest('[data-act]');
+    if (act) {
+      const k = act.dataset.act;
+      if (k === 'copy') copy(curSql);
+      else if (k === 's3') show(2);
+      else if (k === 'again') { closeCard(); qin.focus(); }
+      else if (k === 'close') closeCard();
+    }
   });
 
-  document.getElementById('clear').addEventListener('click', function(){
-    if(!window.confirm('清空本次会话的提问记录？（示例问题会恢复）')) return;
-    save(fresh()); render(); say('已清空，示例问题已恢复。', true);
+  /* 第 3 屏静态按钮 / 第 4 屏按钮 */
+  const screen3 = document.querySelectorAll('.screen')[2];
+  const screen4 = document.querySelectorAll('.screen')[3];
+  screen3.addEventListener('click', function (e) {
+    const el = e.target.closest('.act');
+    if (!el) return;
+    const label = el.textContent.trim();
+    if (label === '复制 SQL') { copy(S3_SQL); return; }
+    toast('静态演示页：' + label + ' 在本地项目里可运行');
+  });
+  screen4.addEventListener('click', function (e) {
+    const el = e.target.closest('.btn');
+    if (!el) return;
+    if (el.textContent.indexOf('按默认口径') > -1) { show(2); toast('按默认口径出结果 → 第 3 屏'); }
+    else { toast('原型只演示默认口径分支，改口径重算在本地项目里跑'); }
+  });
+
+  /* 清空：页内二次确认，不依赖 window.confirm（iframe / 无痕下会被拦掉） */
+  let armed = false;
+  let armTimer = null;
+  clearBtn.addEventListener('click', function () {
+    if (!armed) {
+      armed = true;
+      clearBtn.textContent = '确认清空？';
+      clearBtn.classList.add('arm');
+      armTimer = setTimeout(function () {
+        armed = false; clearBtn.textContent = '清空'; clearBtn.classList.remove('arm');
+      }, 3200);
+      return;
+    }
+    clearTimeout(armTimer);
+    armed = false; clearBtn.textContent = '清空'; clearBtn.classList.remove('arm');
+    mem = fresh();
+    commit();
+    render();
+    closeCard();
+    hideMsg();
+    toast('已清空，恢复 3 条示例');
+  });
+
+  /* 跨标签同步 */
+  window.addEventListener('storage', function (e) {
+    if (e.key !== KEY) return;
+    mem = null;
+    state();
+    render();
+  });
+
+  /* 键盘切屏：输入框内不响应，否则在输入框里按 ← → 会直接跳屏 */
+  document.addEventListener('keydown', function (e) {
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    if (e.isComposing || e.keyCode === 229) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const cur = tabs.findIndex(function (x) { return x.classList.contains('on'); });
+    if (e.key === 'ArrowRight') show((cur + 1) % 5);
+    if (e.key === 'ArrowLeft') show((cur + 4) % 5);
   });
 
   render();
 })();
+
 </script>
 </body>
 </html>
