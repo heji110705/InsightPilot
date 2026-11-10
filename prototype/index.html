@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>InsightPilot · 可点原型（5 屏）</title>
+<style>
+  :root{
+    --blue:#1a56db; --blue-weak:#eef4ff; --ink:#141a22; --ink2:#3d4655; --mut:#7b8494;
+    --line:#e3e8ef; --bg:#f2f4f8; --ok:#0f7b4f; --ok-weak:#e9f7f0; --warn:#a8620a; --warn-weak:#fdf4e3;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
+    font-family:"Microsoft YaHei","PingFang SC",system-ui,-apple-system,sans-serif;}
+  .wrap{max-width:1240px;margin:0 auto;padding:26px 24px 60px;}
+
+  /* 顶部 */
+  .top{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-bottom:14px;}
+  .brand{display:flex;align-items:center;gap:10px;}
+  .logo{width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,#1a56db,#4f8bff);position:relative;}
+  .logo::after{content:"";position:absolute;inset:8px 8px auto;height:3px;border-radius:2px;background:#fff;opacity:.9;}
+  .logo::before{content:"";position:absolute;left:8px;right:8px;bottom:8px;height:3px;border-radius:2px;background:#fff;opacity:.55;}
+  h1.title{font-size:16px;margin:0;font-weight:700;letter-spacing:.2px;}
+  .sub{font-size:12px;color:var(--mut);margin-top:2px;}
+  .tabs{display:flex;gap:6px;background:#fff;border:1px solid var(--line);padding:4px;border-radius:10px;}
+  .tab{border:0;background:transparent;font-family:inherit;font-size:12.5px;color:var(--ink2);
+    padding:7px 12px;border-radius:7px;cursor:pointer;transition:.15s;white-space:nowrap;}
+  .tab:hover{background:#f4f6fa;}
+  .tab.on{background:var(--blue);color:#fff;font-weight:700;}
+  .tab .n{opacity:.55;margin-right:4px;font-variant-numeric:tabular-nums;}
+
+  /* 画板 */
+  .board{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;box-shadow:0 8px 26px rgba(18,28,45,.07);}
+  .chrome{display:flex;align-items:center;gap:8px;padding:9px 12px;background:#f7f9fc;border-bottom:1px solid var(--line);}
+  .dot{width:9px;height:9px;border-radius:50%;background:#dfe4ec;}
+  .url{flex:1;margin-left:8px;font-size:11.5px;color:var(--mut);background:#fff;border:1px solid var(--line);
+    border-radius:6px;padding:4px 10px;font-family:ui-monospace,Consolas,monospace;}
+  .stage{position:relative;height:616px;background:#fff;overflow:hidden;}
+  .screen{position:absolute;inset:0;display:none;flex-direction:column;}
+  .screen.on{display:flex;}
+
+  /* 通用组件 */
+  .sbar{display:flex;align-items:center;justify-content:space-between;padding:7px 18px;border-bottom:1px solid var(--line);
+    font-size:11.5px;color:var(--mut);background:#fcfdfe;}
+  .sbar .l{display:flex;align-items:center;gap:8px;}
+  .pill{background:var(--blue-weak);color:var(--blue);border-radius:999px;padding:2px 8px;font-size:10.5px;font-weight:700;}
+  .pill.ok{background:var(--ok-weak);color:var(--ok);}
+  .pill.warn{background:var(--warn-weak);color:var(--warn);}
+  .ava{width:22px;height:22px;border-radius:50%;background:#dbe6ff;color:var(--blue);font-size:11px;
+    display:grid;place-items:center;font-weight:700;}
+
+  /* S1 首页 */
+  .hero{flex:1;display:grid;grid-template-columns:1fr 300px;gap:28px;padding:34px 44px 26px;align-items:start;}
+  .hero h2{font-size:30px;line-height:1.35;margin:0 0 10px;letter-spacing:.4px;}
+  .hero p.lead{font-size:13.5px;color:var(--ink2);line-height:1.85;margin:0 0 26px;}
+  .askbox{border:1.5px solid #d6dde8;border-radius:12px;padding:14px 14px 10px;background:#fff;
+    box-shadow:0 2px 10px rgba(20,30,50,.04);}
+  .askbox .ph{font-size:13.5px;color:#9aa4b2;padding:6px 2px 16px;}
+  .askrow{display:flex;align-items:center;justify-content:space-between;}
+  .askrow .hint{font-size:11px;color:var(--mut);}
+  .btn{background:var(--blue);color:#fff;border:0;border-radius:8px;padding:8px 16px;font-size:12.5px;
+    font-family:inherit;font-weight:700;cursor:pointer;}
+  .btn.ghost{background:#fff;color:var(--ink2);border:1px solid var(--line);font-weight:400;}
+  .chips{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;}
+  .chipx{border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 12px;font-size:11.5px;
+    color:var(--ink2);cursor:pointer;}
+  .chipx:hover{border-color:#bcd0f5;color:var(--blue);}
+  .edge{margin-top:26px;display:flex;gap:9px;align-items:flex-start;background:#fafbfd;border:1px dashed #dbe1ea;
+    border-radius:9px;padding:10px 12px;font-size:11.5px;color:#5b6575;line-height:1.7;}
+  .edge b{color:#3d4655;}
+  .side{border-left:1px solid var(--line);padding-left:22px;}
+  .side h4{font-size:11px;color:var(--mut);font-weight:700;letter-spacing:.6px;margin:0 0 12px;text-transform:uppercase;}
+  .qitem{padding:9px 0;border-bottom:1px dashed #eceff4;font-size:12px;color:var(--ink2);line-height:1.5;}
+  .qitem span{display:block;font-size:10.5px;color:#a2abb8;margin-top:3px;}
+
+  /* S2 解析 */
+  .qbar{padding:22px 34px 16px;border-bottom:1px solid var(--line);}
+  .bubble{display:inline-block;background:var(--blue);color:#fff;font-size:13.5px;padding:10px 15px;border-radius:12px 12px 12px 3px;}
+  .split{flex:1;display:grid;grid-template-columns:1fr 340px;gap:0;overflow:hidden;}
+  .steps{padding:20px 30px;overflow:auto;}
+  .step{display:flex;gap:12px;padding:11px 0;position:relative;}
+  .step:not(:last-child)::before{content:"";position:absolute;left:9px;top:32px;bottom:-2px;width:1.5px;background:#e8ecf2;}
+  .mk{width:19px;height:19px;border-radius:50%;flex:0 0 19px;display:grid;place-items:center;font-size:10px;
+    background:#e8ecf2;color:#9aa4b2;font-weight:700;z-index:1;}
+  .step.done .mk{background:var(--ok);color:#fff;}
+  .step.run .mk{background:var(--blue);color:#fff;}
+  .step h5{margin:1px 0 3px;font-size:12.8px;font-weight:700;color:var(--ink);}
+  .step p{margin:0;font-size:11.5px;color:#6b7484;line-height:1.65;}
+  .step.todo h5,.step.todo p{color:#a8b1bd;}
+  .spin{display:inline-block;width:9px;height:9px;border:1.6px solid rgba(255,255,255,.45);
+    border-top-color:#fff;border-radius:50%;animation:sp .8s linear infinite;}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .trace{border-left:1px solid var(--line);background:#fbfcfe;padding:16px 18px;overflow:auto;}
+  .trace h4{font-size:10.5px;color:var(--mut);margin:0 0 10px;letter-spacing:.6px;}
+  .log{font-family:ui-monospace,Consolas,monospace;font-size:10.5px;line-height:1.9;color:#54606f;white-space:pre-wrap;}
+
+  /* S3 结果 */
+  .res{flex:1;display:grid;grid-template-columns:1fr 300px;overflow:hidden;}
+  .resmain{padding:22px 32px;overflow:auto;}
+  .sum{font-size:12.5px;color:var(--mut);}
+  .big{font-size:52px;font-weight:700;line-height:1.05;letter-spacing:-1px;margin:6px 0 4px;}
+  .big small{font-size:15px;font-weight:400;color:var(--ink2);letter-spacing:0;margin-left:8px;}
+  .concl{font-size:13.5px;line-height:1.8;color:var(--ink);margin:2px 0 16px;}
+  table.rt{width:100%;border-collapse:collapse;font-size:12px;margin-top:4px;}
+  table.rt th{background:#f6f8fb;color:#4a5566;font-weight:700;text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);}
+  table.rt td{padding:8px 10px;border-bottom:1px solid #f0f3f7;font-variant-numeric:tabular-nums;}
+  .meta2{font-size:10.5px;color:#9aa4b2;margin-top:6px;}
+  .code{margin-top:14px;background:#0f1720;border-radius:9px;padding:12px 14px;position:relative;}
+  .code .t{font-size:10px;color:#7f8c9b;letter-spacing:.8px;margin-bottom:7px;}
+  .code pre{margin:0;font-family:ui-monospace,Consolas,monospace;font-size:11.5px;line-height:1.75;color:#d6e2f0;white-space:pre-wrap;}
+  .code .k{color:#7fb3ff;} .code .s{color:#8fd6a8;}
+  .note{margin-top:12px;font-size:11px;color:#6b7484;line-height:1.8;background:#fafbfd;border-radius:8px;padding:9px 11px;border:1px solid #eef1f6;}
+  .note b{color:var(--ink2);}
+  .acts{display:flex;gap:8px;margin-top:14px;}
+  .act{font-size:11.5px;color:var(--ink2);border:1px solid var(--line);background:#fff;border-radius:7px;padding:6px 11px;cursor:pointer;}
+
+  /* S4 澄清 */
+  .clar{padding:24px 34px;flex:1;overflow:auto;}
+  .warnbar{display:flex;gap:10px;background:var(--warn-weak);border:1px solid #f3e2c0;border-radius:9px;
+    padding:11px 13px;font-size:12px;color:#7a4a06;line-height:1.7;margin:16px 0 6px;}
+  .opts{display:grid;gap:9px;margin-top:14px;}
+  .opt{display:flex;align-items:flex-start;gap:11px;border:1.4px solid var(--line);border-radius:10px;padding:12px 14px;cursor:pointer;background:#fff;}
+  .opt.on{border-color:var(--blue);background:#f7faff;}
+  .radio{width:15px;height:15px;border-radius:50%;border:1.6px solid #c8d1de;flex:0 0 15px;margin-top:2px;position:relative;}
+  .opt.on .radio{border-color:var(--blue);}
+  .opt.on .radio::after{content:"";position:absolute;inset:3.2px;border-radius:50%;background:var(--blue);}
+  .opt h5{margin:0 0 3px;font-size:12.8px;}
+  .opt p{margin:0;font-size:11.3px;color:#6b7484;line-height:1.6;}
+  .footbar{margin-top:20px;display:flex;align-items:center;justify-content:space-between;gap:12px;
+    border-top:1px solid var(--line);padding-top:14px;}
+
+  /* S5 评测 */
+  .eval{padding:22px 32px;flex:1;overflow:auto;}
+  .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+  .kpi{border:1px solid var(--line);border-radius:10px;padding:13px 14px;background:#fff;}
+  .kpi .lb{font-size:10.5px;color:var(--mut);letter-spacing:.4px;}
+  .kpi .v{font-size:24px;font-weight:700;margin-top:5px;letter-spacing:-.5px;}
+  .kpi .d{font-size:10.5px;color:var(--ok);margin-top:3px;}
+  table.ev{width:100%;border-collapse:collapse;font-size:12px;margin-top:18px;}
+  table.ev th{background:#f6f8fb;color:#4a5566;text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);font-size:11.5px;}
+  table.ev td{padding:8px 10px;border-bottom:1px solid #f0f3f7;font-variant-numeric:tabular-nums;}
+  table.ev tr.best td{background:#f4fbf7;font-weight:700;}
+  .cap{font-size:11px;color:#6b7484;margin-top:12px;line-height:1.8;}
+  .bars{display:grid;grid-template-columns:repeat(6,1fr);gap:14px;margin-top:10px;align-items:end;}
+  .bar .bt{height:64px;background:#f1f4f9;border-radius:5px;display:flex;align-items:flex-end;overflow:hidden;}
+  .bar .bt i{display:block;width:100%;background:linear-gradient(180deg,#4f8bff,#1a56db);border-radius:5px;transition:.3s;}
+  .bar span{display:block;text-align:center;font-size:10.5px;color:#7b8494;margin-top:5px;font-variant-numeric:tabular-nums;}
+
+  /* 说明区 */
+  .notes{margin-top:14px;display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
+  .ncard{background:#fff;border:1px solid var(--line);border-radius:10px;padding:13px 15px;}
+  .ncard h6{margin:0 0 6px;font-size:11.5px;color:var(--blue);letter-spacing:.3px;}
+  .ncard p{margin:0;font-size:11.8px;color:#5b6575;line-height:1.75;}
+  .ncard p b{color:var(--ink2);}
+  .foot{display:flex;justify-content:space-between;align-items:center;margin-top:16px;font-size:11.5px;color:var(--mut);}
+  @media (max-width:1100px){
+    .stage{height:auto;min-height:616px}
+    .hero,.split,.res{grid-template-columns:1fr}
+    .side,.trace{border-left:0;border-top:1px solid var(--line)}
+    .cards{grid-template-columns:repeat(2,1fr)}
+    .notes{grid-template-columns:1fr}
+  }
+
+  /* 手机：HR 大概率用手机点开，优先保证不溢出、能读、能点 */
+  @media (max-width:640px){
+    html,body{overflow-x:hidden;max-width:100vw}
+    .wrap{padding:14px 12px 34px}
+    .top{margin-bottom:10px;gap:10px}
+    h1.title{font-size:15px}
+    .sub{font-size:11px;line-height:1.5}
+    .tabs{width:100%;flex-wrap:wrap;gap:6px;justify-content:flex-start;overflow:visible}
+    .tabs::-webkit-scrollbar{display:none}
+    .tab{flex:0 0 auto;font-size:12px;padding:7px 10px}
+    .stage{height:auto;min-height:0;overflow:visible}
+    .screen{position:static;inset:auto}
+    .hero{padding:20px 16px 18px;gap:18px}
+    .hero h2{font-size:22px;line-height:1.42;margin-bottom:8px}
+    .hero p.lead{font-size:12.5px;line-height:1.75;margin-bottom:18px}
+    .side{padding-left:0;padding-top:16px}
+    .split,.res{overflow:visible}
+    .res>*,.split>*{min-width:0}
+    .trace{padding:12px 14px;border-left:0}
+    .cards{grid-template-columns:1fr}
+    .notes{grid-template-columns:1fr}
+    .sbar{padding:6px 12px;gap:8px;flex-wrap:wrap}
+    table{font-size:11px}
+    td,th{padding:5px 6px}
+    pre,.sql,.code,code{font-size:11px;overflow-x:auto}
+    .board{border-radius:10px}
+    .chrome{padding:7px 10px}
+    .url{font-size:10.5px;padding:3px 8px}
+    img{max-width:100%}
+    .acts{flex-wrap:wrap;gap:7px}
+    .act{flex:0 0 auto;white-space:nowrap;font-size:11px;padding:6px 10px}
+  }
+  /* ---------- 会话存储（本机持久化） ---------- */
+  .askbox input.qin{width:100%;border:0;outline:0;background:transparent;font-family:inherit;
+    font-size:13.5px;color:var(--ink);padding:6px 2px 14px;line-height:1.7;}
+  .askbox input.qin::placeholder{color:#9aa4b2;}
+  .askbox.err{border-color:#e2b0a6;background:#fffbfa;}
+  .qmsg{font-size:11.5px;line-height:1.65;padding:7px 10px;border-radius:6px;margin-top:10px;
+    background:#fdf2ef;border-left:2.5px solid #d97757;color:#8f3a26;}
+  .qmsg.ok{background:#eff8f3;border-left-color:#35a06a;color:#1f6b45;}
+  .qmsg b{font-weight:700;}
+  .sidenote{font-size:10.5px;color:#a2abb8;margin-top:10px;line-height:1.65;}
+  .clearx{font-size:10.5px;color:#a2abb8;cursor:pointer;border:0;background:0;padding:0;
+    font-family:inherit;text-decoration:underline;text-underline-offset:2px;}
+  .clearx:hover{color:#d97757;}
+  .qitem.mine span{color:#4f7fbf;}
+  .qitem.miss span{color:#c0705a;}
+  .flash{animation:fl 1.2s ease;}
+  @keyframes fl{0%{background:#eef4ff}100%{background:transparent}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="top">
+    <div class="brand">
+      <div class="logo"></div>
+      <div>
+        <h1 class="title">InsightPilot · 自助问数</h1>
+        <div class="sub">可点原型 5 屏 ｜ 何志伟 ｜ 2026.11 ｜ 数据与指标均来自真实运行</div>
+      </div>
+    </div>
+    <div class="tabs" id="tabs">
+      <button class="tab on" data-i="0"><span class="n">1</span>提问入口</button>
+      <button class="tab" data-i="1"><span class="n">2</span>解析中</button>
+      <button class="tab" data-i="2"><span class="n">3</span>结果与复核</button>
+      <button class="tab" data-i="3"><span class="n">4</span>口径澄清</button>
+      <button class="tab" data-i="4"><span class="n">5</span>评测页</button>
+    </div>
+  </div>
+
+  <div class="board">
+    <div class="chrome">
+      <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+      <div class="url" id="url">127.0.0.1:8000/</div>
+    </div>
+
+    <div class="stage" id="stage">
+
+      <!-- ============ 1 首页 ============ -->
+      <section class="screen on">
+        <div class="sbar">
+          <div class="l"><span class="pill">只读</span><span>数据源 bookstore.sqlite ｜ 8 张表 · 20 个指标口径</span></div>
+          <div class="l"><span>会话 #A7F2</span><span class="ava">何</span></div>
+        </div>
+        <div class="hero">
+          <div>
+            <h2>问一句，<br>拿到能复核的数字。</h2>
+            <p class="lead">答案附 SQL 与结果集；答不了会直接告诉你答不了，不猜。</p>
+            <div class="askbox" id="askbox">
+              <input class="qin" id="qin" type="text" autocomplete="off" spellcheck="false"
+                     placeholder="例如：精装书有多少本？" aria-label="输入你的问题">
+              <div class="askrow">
+                <div class="hint">Enter 发送 ｜ 示例问题有真实结果</div>
+                <button class="btn" id="askbtn">提问</button>
+              </div>
+            </div>
+            <div class="qmsg" id="qmsg" hidden></div>
+            <div class="chips">
+              <div class="chipx">精装书有多少本</div>
+              <div class="chipx">各分类平均价格</div>
+              <div class="chipx">评论最多的书是哪本</div>
+            </div>
+            <div class="edge">
+              <div>⚠</div>
+              <div><b>能力边界写在界面上：</b>当前库的日期字段几乎单值（<code>dim_date</code> 只有 15 行），<b>趋势 / 同比环比类问题答不了</b>——这类问题会直接回“数据不支持”，不会给一条看起来合理的错曲线。</div>
+            </div>
+          </div>
+          <div class="side">
+            <h4>本次会话</h4>
+            <div id="turns"></div>
+            <div style="margin-top:12px;display:flex;align-items:center;gap:14px">
+              <span style="font-size:11.5px;color:var(--blue)">全部提问 →</span>
+              <button class="clearx" id="clear" type="button">清空</button>
+            </div>
+            <h4 style="margin:22px 0 8px">口径库</h4>
+            <div id="calibers"></div>
+            <div class="sidenote" id="storenote">会话记录加载中…</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 2 解析中 ============ -->
+      <section class="screen">
+        <div class="qbar"><div class="bubble">精装书有多少本？</div></div>
+        <div class="split">
+          <div class="steps">
+            <div class="step done"><div class="mk">✓</div><div><h5>理解意图</h5><p>query ｜ 单轮问数 ｜ 无歧义，直接进入取数</p></div></div>
+            <div class="step done"><div class="mk">✓</div><div><h5>召回语义层</h5><p>8 张表卡片命中 3 张 ｜ 20 个指标命中 2 个 ｜ 24 条范例 SQL 取 2 条 ｜ token 预算裁剪后 1.8k</p></div></div>
+            <div class="step done"><div class="mk">✓</div><div><h5>生成 SQL</h5><p>选中 <code>dim_book</code>，投影 binding + count，条件 binding = '精装'</p></div></div>
+            <div class="step done"><div class="mk">✓</div><div><h5>安全校验</h5><p>单条 SELECT ✓ ｜ 表白名单 ✓ ｜ 无 CTE ｜ 已补 LIMIT 5000 ｜ 只读连接</p></div></div>
+            <div class="step run"><div class="mk"><span class="spin"></span></div><div><h5>执行查询</h5><p>只读 URI 执行中…</p></div></div>
+            <div class="step todo"><div class="mk">6</div><div><h5>解读与自检</h5><p>判型 → 选图 → 结论绑定结果集 → Critic 三查</p></div></div>
+            <div class="note" style="margin-left:31px;margin-top:6px">本次执行限时 30s；超时会中止并保留 trace，不会留下半截结果。</div>
+          </div>
+          <div class="trace">
+            <h4>实时 TRACE</h4>
+            <div class="log">[00.00] intent       query / single
+[00.31] recall       tables=3 metrics=2
+[00.31] recall       fewshots=2 tokens=1832
+[00.94] sql_gen      dim_book / 42 tok
+[00.95] guard        select=1 tables=ok
+[00.96] guard        limit=5000 readonly
+[01.02] execute      running ...
+</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 3 结果 ============ -->
+      <section class="screen">
+        <div class="sbar">
+          <div class="l"><span>精装书有多少本？</span></div>
+          <div class="l"><span class="pill ok">已复核</span><span>5.71s</span></div>
+        </div>
+        <div class="res">
+          <div class="resmain">
+            <div class="sum">共 1 行结果</div>
+            <div class="big">63<small>本</small></div>
+            <div class="concl">当前库共有 <b>63 本精装书</b>，占全部在架图书的 12.9%。</div>
+
+            <table class="rt">
+              <tr><th style="width:45%">binding（装帧）</th><th>count</th></tr>
+              <tr><td>精装</td><td>63</td></tr>
+            </table>
+            <div class="meta2">返回 1 行 · 耗时 5.71s · 缓存未命中 · 扫描行数 494</div>
+
+            <div class="code">
+              <div class="t">生成的 SQL（可复制复核）</div>
+<pre><span class="k">SELECT</span> COUNT(*) <span class="k">AS</span> count
+<span class="k">FROM</span> dim_book
+<span class="k">WHERE</span> binding = <span class="s">'精装'</span>;</pre>
+            </div>
+
+            <div class="note"><b>口径脚注：</b>装帧取自 <code>dim_book.binding</code>，“精装”不含“精装典藏”等变体；统计范围为全部在架图书，不做时间过滤。</div>
+
+            <div class="acts">
+              <div class="act">复制 SQL</div><div class="act">导出 CSV</div><div class="act">看执行计划</div><div class="act">换口径重算</div><div class="act">看本轮 trace</div>
+            </div>
+            <div style="margin-top:20px;font-size:11px;color:#9aa4b2;letter-spacing:.4px">你可能还想问</div>
+            <div class="chips" style="margin-top:8px">
+              <div class="chipx">平装有多少本</div>
+              <div class="chipx">精装与平装的平均价格差多少</div>
+              <div class="chipx">精装书里评分最高的是哪本</div>
+            </div>
+          </div>
+          <div class="trace">
+            <h4>本轮节点耗时</h4>
+            <div class="log">intent      310 ms
+recall      630 ms
+sql_gen     630 ms
+guard        20 ms
+execute    4120 ms
+interpret    — 
+</div>
+            <div style="margin-top:14px;font-size:11px;color:#6b7484;line-height:1.8">
+              数字由代码计算并回查结果集，模型不口述数字；自检不通过会打回重算。
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 4 口径澄清 ============ -->
+      <section class="screen">
+        <div class="qbar"><div class="bubble">各分类平均价格</div></div>
+        <div class="clar">
+          <div class="warnbar">
+            <div>◐</div>
+            <div><b>已采用默认口径并标注：</b>均价 = 实付价（含运费），不剔除极值。结果会带这句脚注；如需调整可在下方切换，或直接按默认出结果。</div>
+          </div>
+
+          <div class="opts">
+            <label class="opt on"><div class="radio"></div><div>
+              <h5>默认口径（推荐）</h5>
+              <p>均价 = 实付价含运费；不剔除极值；统计全部在架图书。与团队既有报表口径一致。</p>
+            </div></label>
+            <label class="opt"><div class="radio"></div><div>
+              <h5>剔除极值（1% – 99%）</h5>
+              <p>适合比较不同分类的价格中枢，避免单品极端价格拉高均值。</p>
+            </div></label>
+            <label class="opt"><div class="radio"></div><div>
+              <h5>仅统计在架图书</h5>
+              <p>排除下架与缺货书目，适合对外汇报。</p>
+            </div></label>
+          </div>
+
+          <div class="footbar">
+            <div style="font-size:11.3px;color:#6b7484;line-height:1.7;max-width:440px">
+              只有<b>涉及不同表、会算错数</b>时才回问用户；其余一律给默认口径 + 脚注。
+              连问三次以上，用户就不会再用第二次。
+            </div>
+            <div style="display:flex;gap:8px">
+              <button class="btn ghost">改完再算</button>
+              <button class="btn">按默认口径出结果</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 5 评测页 ============ -->
+      <section class="screen">
+        <div class="sbar">
+          <div class="l"><span>评测 /eval</span><span class="pill">60 题 × 4 配置 × 2 轮</span></div>
+          <div class="l"><span>最近一次：2026.11</span></div>
+        </div>
+        <div class="eval">
+          <div class="cards">
+            <div class="kpi"><div class="lb">答对率 EX</div><div class="v">50.0%</div><div class="d">规则基线 18.3% → 2.7×</div></div>
+            <div class="kpi"><div class="lb">p50 延迟</div><div class="v">5.75s</div><div class="d">同问命中缓存 0.04s</div></div>
+            <div class="kpi"><div class="lb">单题成本</div><div class="v">¥0.0052</div><div class="d">全链路 token 记账</div></div>
+            <div class="kpi"><div class="lb">安全用例</div><div class="v">54 / 54</div><div class="d">写操作 / ATTACH / PRAGMA 全拦截</div></div>
+          </div>
+
+          <table class="ev">
+            <tr><th style="width:34%">配置</th><th>答对率 EX</th><th>p50</th><th>单题成本</th></tr>
+            <tr class="best"><td>full（完整 6 Agent）</td><td>50.0%（30/60）</td><td>5748 ms</td><td>¥0.0052</td></tr>
+            <tr><td>no_critic（关闭自检）</td><td>50.0%（30/60）</td><td>5391 ms</td><td>¥0.0052</td></tr>
+            <tr><td>no_schema（去掉相关性排序）</td><td>46.7%（28/60）</td><td>5616 ms</td><td>¥0.0056</td></tr>
+            <tr><td>single（单 Agent）</td><td>45.0%（27/60）</td><td>—</td><td>—</td></tr>
+            <tr><td>规则基线（正则 + 模板）</td><td>18.3%</td><td>—</td><td>—</td></tr>
+          </table>
+
+          <div class="cap">
+            <b>怎么用这张表：</b>两轮重复运行的波动是 <b>0 – 3.4pp</b>，所以小于 3.4 个百分点的差异不算改进；
+            full 与 no_critic 同为 50.0%，说明当前题集上自检环节还没带来净收益——这一条已记入 V2 待办，而不是从表里删掉。
+            <div style="margin-top:20px;font-size:11px;color:#9aa4b2;letter-spacing:.4px">按难度分 6 档（每档 10 题，由易到难）</div>
+            <div class="bars">
+              <div class="bar"><div class="bt"><i style="height:90%"></i></div><span>90%</span></div>
+              <div class="bar"><div class="bt"><i style="height:70%"></i></div><span>70%</span></div>
+              <div class="bar"><div class="bt"><i style="height:60%"></i></div><span>60%</span></div>
+              <div class="bar"><div class="bt"><i style="height:50%"></i></div><span>50%</span></div>
+              <div class="bar"><div class="bt"><i style="height:20%"></i></div><span>20%</span></div>
+              <div class="bar"><div class="bt"><i style="height:10%"></i></div><span>10%</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+
+  <div class="notes" id="notes"></div>
+
+  <div class="foot">
+    <div>键盘 ← → 切换屏幕 ｜ 数据来源：docs/03-评测报告.md · demo 实跑记录</div>
+    <div>github.com/heji110705/InsightPilot</div>
+  </div>
+</div>
+
+<script>
+const NOTES = [
+  [["首屏只做一件事","不摆功能清单，只放一个问题框 + 三个示例。<b>示例问题就是引导</b>，用户不知道能问什么时，照着改一个字就能用。"],
+   ["把边界写在入口","日期字段不支持趋势类问题，这件事<b>写在首页而不是等用户问了才说</b>。预期管理放在前面，比事后解释便宜。"],
+   ["只读数据源标识","顶部常驻“只读”标签与库信息，让用户知道这个数字<b>不会改坏任何数据</b>，这是内部工具被接受的前提。"]],
+  [["进度要可解释","六个节点逐一显示<b>而不是一个转圈</b>：用户能看到卡在哪一步，也知道系统在做什么，等 5 秒不会觉得死机。"],
+   ["召回结果透明","命中几张表卡片、几个指标都写出来，<b>答错时可追到召回环节</b>，而不是只看到一条错 SQL。"],
+   ["trace 右边常驻","每步耗时与关键参数实时落盘，<b>右侧就是排障入口</b>，也是后续做失败归因的数据源。"]],
+  [["结论绑数字","结论句里的 63 和 12.9% <b>都由代码从结果集算出</b>，模型只负责组织语言，杜绝编数。"],
+   ["SQL 可复制","把 SQL 摆在答案下面而不是藏进“高级”，<b>可复核是产品的核心卖点</b>，不是技术细节。"],
+   ["口径脚注必带","每个答案都挂口径说明：取哪个字段、含不含变体、有没有时间过滤。<b>这是“敢用”的来源</b>。"]],
+  [["默认口径 + 标注","模糊词不追问，先给标注过的答案。<b>追问是打断，打断三次用户就走</b>。"],
+   ["只在会算错时回问","判据很具体：涉及不同表、口径差异会改变数字。<b>其余一律默认</b>，把选择权留在结果页。"],
+   ["选项写清后果","每个口径都说明“什么时候该用它”，而不是只给三个名词。<b>用户不懂口径，但懂自己的场景</b>。"]],
+  [["指标放在产品里","评测不是写给人看的文档，<b>而是产品内的一个页面</b>：每次改版都能立刻看到四个护栏指标。"],
+   ["波动先行","先声明两轮波动 0–3.4pp，<b>再谈提升</b>。否则任何 1 个点的变化都能被说成进步。"],
+   ["不利结论不删","full 与 no_critic 打平这件事<b>留在表里并写进待办</b>，比藏起来更能说明这套评测是可信的。"]]
+];
+
+const tabs = [...document.querySelectorAll('.tab')];
+const screens = [...document.querySelectorAll('.screen')];
+const urls = ['127.0.0.1:8000/','127.0.0.1:8000/ask','127.0.0.1:8000/turn/A7F2','127.0.0.1:8000/ask?clarify=1','127.0.0.1:8000/eval'];
+const notesEl = document.getElementById('notes');
+const urlEl = document.getElementById('url');
+
+function show(i){
+  tabs.forEach((t,k)=>t.classList.toggle('on',k===i));
+  screens.forEach((s,k)=>s.classList.toggle('on',k===i));
+  urlEl.textContent = urls[i];
+  notesEl.innerHTML = NOTES[i].map(([h,p])=>`<div class="ncard"><h6>${h}</h6><p>${p}</p></div>`).join('');
+}
+tabs.forEach(t=>t.addEventListener('click',()=>show(+t.dataset.i)));
+document.addEventListener('keydown',e=>{
+  const cur = tabs.findIndex(t=>t.classList.contains('on'));
+  if(e.key==='ArrowRight') show((cur+1)%5);
+  if(e.key==='ArrowLeft') show((cur+4)%5);
+});
+show(0);
+/* ============ 会话存储：本机持久化（云服务未开通时的落地实现） ============ */
+(function(){
+  const KEY = 'insightpilot.prototype.v1';
+  const SEED_TURNS = [
+    { q:'精装书有多少本',      r:'63 本 · 5.71s' },
+    { q:'各分类平均价格',      r:'12 个分类 · 5.48s' },
+    { q:'评论最多的书是哪本',  r:'命中缓存 · 0.04s' }
+  ];
+  const SEED_CAL = ['均价 · 实付价含运费，不剔极值','销量 · 按下单件数，不含退货','评分 · 全部评价，含无文字评分'];
+  const ANSWERS  = { '精装书有多少本':'63 本 · 5.71s', '各分类平均价格':'12 个分类 · 5.48s', '评论最多的书是哪本':'命中缓存 · 0.04s' };
+
+  let ok = true;
+  try { window.localStorage.setItem(KEY+'__t','1'); window.localStorage.removeItem(KEY+'__t'); } catch(e){ ok = false; }
+
+  function fresh(){ return { v:1, turns: SEED_TURNS.map(function(t){ return { q:t.q, r:t.r }; }), misses: [], calibers: SEED_CAL.slice() }; }
+  function read(){
+    if(!ok) return null;
+    try{
+      const raw = window.localStorage.getItem(KEY);
+      if(!raw) return null;
+      const st = JSON.parse(raw);
+      if(!st || !Array.isArray(st.turns) || !Array.isArray(st.calibers)) return null;
+      if(!Array.isArray(st.misses)) st.misses = [];
+      return st;
+    }catch(e){ return null; }
+  }
+  function save(st){
+    if(!ok) return false;
+    try{ window.localStorage.setItem(KEY, JSON.stringify(st)); return true; }
+    catch(e){ ok = false; return false; }
+  }
+  function state(){ const st = read(); if(st) return st; const f = fresh(); save(f); return f; }
+
+  function esc(t){ return String(t).replace(/[&<>"]/g, function(c){
+    return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' })[c]; }); }
+  function norm(t){ return String(t).replace(/[\s？?。.,，！!、]/g,'').toLowerCase(); }
+
+  const turnsEl = document.getElementById('turns');
+  const calEl   = document.getElementById('calibers');
+  const noteEl  = document.getElementById('storenote');
+
+  function render(){
+    const st = state();
+    turnsEl.innerHTML = st.turns.map(function(t){
+      const cls  = 'qitem' + (t.mine ? (t.miss ? ' miss' : ' mine') : '');
+      const meta = (t.miss ? '未命中 · 已回流语义层' : esc(t.r || '—')) + (t.mine ? ' · 本机记录' : '');
+      return '<div class="' + cls + '">' + esc(t.q) + '<span>' + meta + '</span></div>';
+    }).join('');
+    calEl.innerHTML = st.calibers.map(function(c){ return '<div class="qitem">' + esc(c) + '</div>'; }).join('');
+    const n = st.turns.filter(function(t){ return t.mine; }).length;
+    noteEl.textContent = ok
+      ? ('本机会话 · 已保存 ' + n + ' 条' + (st.misses.length ? (' · 未命中 ' + st.misses.length + ' 条') : '') + ' ｜ 刷新后仍在')
+      : '当前浏览器禁用了本地存储，本次会话不会保留';
+  }
+
+  const qin = document.getElementById('qin');
+  const btn = document.getElementById('askbtn');
+  const box = document.getElementById('askbox');
+  const msg = document.getElementById('qmsg');
+
+  function say(html, good){
+    msg.hidden = false;
+    msg.className = 'qmsg' + (good ? ' ok' : '');
+    msg.innerHTML = html;
+  }
+
+  function submit(){
+    const v = qin.value.trim();
+    if(!v){ box.classList.add('err'); qin.focus(); return; }
+    box.classList.remove('err');
+    const key = norm(v);
+    let hit = null;
+    Object.keys(ANSWERS).forEach(function(k){ if(norm(k) === key) hit = k; });
+    const st = state();
+    if(hit){
+      st.turns = st.turns.filter(function(t){ return norm(t.q) !== norm(hit); });
+      st.turns.unshift({ q: hit, r: ANSWERS[hit], mine: true });
+      save(st); render(); qin.value = '';
+      say('<b>已记入本次会话</b>（本机存储，刷新后仍在）。第 3 屏演示的就是这条问题的结果与复核。', true);
+    }else{
+      st.turns = st.turns.filter(function(t){ return norm(t.q) !== key; });
+      st.turns.unshift({ q: v, r: '', miss: true, mine: true });
+      st.misses = [v].concat(st.misses.filter(function(x){ return norm(x) !== key; })).slice(0, 20);
+      save(st); render(); qin.value = '';
+      say('<b>这条答不了。</b>原型没有接数据源，只有示例问题是真实运行结果；真实取数要在本地跑项目。已记入「未命中」，按设计回流语义层待补。', false);
+    }
+  }
+
+  btn.addEventListener('click', submit);
+  qin.addEventListener('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); submit(); } });
+  qin.addEventListener('input', function(){ box.classList.remove('err'); });
+
+  document.querySelectorAll('.chipx').forEach(function(c){
+    c.addEventListener('click', function(){ qin.value = c.textContent.trim(); show(0); qin.focus(); });
+  });
+
+  document.getElementById('clear').addEventListener('click', function(){
+    if(!window.confirm('清空本次会话的提问记录？（示例问题会恢复）')) return;
+    save(fresh()); render(); say('已清空，示例问题已恢复。', true);
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
