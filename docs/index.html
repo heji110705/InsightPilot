@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>InsightPilot · 自助问数</title>
+<style>
+  :root{
+    --blue:#1a56db; --blue-weak:#eaf1fe; --ink:#14181f; --ink2:#3d4653;
+    --mut:#6b7484; --line:#e3e8ef; --bg:#f6f8fb;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);overflow-x:hidden;
+    font-family:"Microsoft YaHei","PingFang SC",system-ui,-apple-system,sans-serif;
+    -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:860px;margin:0 auto;padding:56px 24px 60px;}
+
+  .logo{width:40px;height:40px;border-radius:11px;background:linear-gradient(135deg,#1a56db,#4f8bff);
+    position:relative;margin-bottom:20px;}
+  .logo::after{content:"";position:absolute;inset:11px 11px auto;height:4px;border-radius:2px;background:#fff;opacity:.92;}
+  .logo::before{content:"";position:absolute;left:11px;right:11px;bottom:11px;height:4px;border-radius:2px;background:#fff;opacity:.5;}
+
+  h1{font-size:30px;line-height:1.35;margin:0 0 12px;letter-spacing:.2px;font-weight:700;}
+  .lead{font-size:15px;line-height:1.85;color:var(--ink2);margin:0 0 8px;max-width:620px;}
+  .lead b{color:var(--ink);font-weight:700;}
+
+  .meta{display:flex;flex-wrap:wrap;gap:8px;margin:22px 0 34px;}
+  .tag{font-size:12px;color:var(--mut);background:#fff;border:1px solid var(--line);
+    border-radius:999px;padding:5px 12px;}
+
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  .card{display:block;text-decoration:none;color:inherit;background:#fff;border:1px solid var(--line);
+    border-radius:13px;padding:20px 20px 18px;transition:.18s;position:relative;overflow:hidden;}
+  .card:hover{border-color:#c3d5f7;box-shadow:0 8px 24px rgba(26,86,219,.09);transform:translateY(-2px);}
+  .card .t{font-size:15px;font-weight:700;margin:0 0 7px;display:flex;align-items:center;gap:8px;}
+  .card .t .arw{color:var(--blue);font-weight:400;transition:.18s;}
+  .card:hover .t .arw{transform:translateX(3px);}
+  .card .d{font-size:12.5px;line-height:1.75;color:var(--mut);margin:0;}
+  .card .k{display:inline-block;font-size:11px;color:var(--blue);background:var(--blue-weak);
+    border-radius:5px;padding:2px 7px;font-weight:700;margin-bottom:9px;}
+
+  .card.main{grid-column:1 / -1;background:linear-gradient(135deg,#1a56db,#2f6ae8);border:0;color:#fff;}
+  .card.main .t{color:#fff;font-size:17px;}
+  .card.main .d{color:rgba(255,255,255,.82);}
+  .card.main .k{background:rgba(255,255,255,.18);color:#fff;}
+  .card.main .t .arw{color:#fff;}
+  .card.main:hover{box-shadow:0 12px 30px rgba(26,86,219,.28);}
+
+  .nums{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:30px 0 0;
+    background:#fff;border:1px solid var(--line);border-radius:13px;padding:18px 14px;}
+  .nums div{text-align:center;}
+  .nums .v{font-size:19px;font-weight:700;color:var(--blue);font-variant-numeric:tabular-nums;}
+  .nums .l{font-size:11px;color:var(--mut);margin-top:3px;}
+
+  .foot{margin-top:34px;padding-top:18px;border-top:1px solid var(--line);
+    font-size:12px;color:var(--mut);line-height:1.9;}
+  .foot a{color:var(--ink2);text-decoration:none;border-bottom:1px solid #cfd6e2;}
+  .foot a:hover{color:var(--blue);border-color:var(--blue);}
+
+  @media (max-width:640px){
+    .wrap{padding:34px 16px 40px}
+    h1{font-size:23px}
+    .lead{font-size:13.5px;line-height:1.8}
+    .grid{grid-template-columns:1fr;gap:11px}
+    .card{padding:16px 16px 15px}
+    .card .t{font-size:14px}
+    .nums{grid-template-columns:repeat(2,1fr);gap:16px 10px;padding:16px 10px}
+    .nums .v{font-size:17px}
+    .meta{margin:18px 0 26px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="logo"></div>
+  <h1>InsightPilot · 自助问数</h1>
+  <p class="lead">
+    让<b>不会写 SQL 的业务同学</b>，用一句中文问出一句可以复核的数。
+    答案下面附 SQL、结果集和口径说明；算不出来的问题，直接说<b>答不了</b>，不猜。
+  </p>
+
+  <div class="meta">
+    <span class="tag">0 → 1 独立完成</span>
+    <span class="tag">FastAPI + Agent 编排</span>
+    <span class="tag">8 表 / 20 指标语义层</span>
+    <span class="tag">60 题固定评测集</span>
+    <span class="tag">2026.11</span>
+  </div>
+
+  <div class="grid">
+    <a class="card main" href="prototype/index.html">
+      <span class="k">建议先看这个 · 手机也能点</span>
+      <p class="t">5 屏可点原型 <span class="arw">→</span></p>
+      <p class="d">提问 → 解析 → 结果与复核 → 口径澄清 → 评测。数字都取自真实运行，不是示意图。</p>
+    </a>
+
+    <a class="card" href="InsightPilot-PRD-v1.0.pdf" target="_blank">
+      <span class="k">一页 A4</span>
+      <p class="t">产品需求文档 <span class="arw">→</span></p>
+      <p class="d">背景、目标与非目标、三个关键决策、验收指标、能力边界、迭代计划。</p>
+    </a>
+
+    <a class="card" href="https://github.com/heji110705/InsightPilot/blob/main/docs/03-评测报告.md" target="_blank">
+      <span class="k">评测</span>
+      <p class="t">评测与消融报告 <span class="arw">→</span></p>
+      <p class="d">60 题四组消融，答对率 18.3% → 50.0%；列覆盖、延迟、成本的测量口径。</p>
+    </a>
+
+    <a class="card" href="https://github.com/heji110705/InsightPilot" target="_blank" rel="noopener">
+      <span class="k">源码</span>
+      <p class="t">GitHub 仓库 <span class="arw">→</span></p>
+      <p class="d">含 267 个 pytest 用例、54 条 SQL 守卫用例与全部开发文档。</p>
+    </a>
+
+    <a class="card" href="https://github.com/heji110705/InsightPilot/blob/main/docs/02-架构与取舍.md" target="_blank">
+      <span class="k">取舍</span>
+      <p class="t">架构与关键决策 <span class="arw">→</span></p>
+      <p class="d">为什么用状态图而不是链式调用，为什么放弃向量库改用 BM25。</p>
+    </a>
+  </div>
+
+  <div class="nums">
+    <div><div class="v">50.0%</div><div class="l">答对率（基线 18.3%）</div></div>
+    <div><div class="v">5.71s</div><div class="l">首问响应</div></div>
+    <div><div class="v">0.04s</div><div class="l">同问命中缓存</div></div>
+    <div><div class="v">54</div><div class="l">SQL 守卫用例</div></div>
+  </div>
+
+  <div class="foot">
+    何志伟 · 广东海洋大学 数据科学与大数据技术 · 2027 届<br>
+    仓库 <a href="https://github.com/heji110705/InsightPilot" target="_blank" rel="noopener">github.com/heji110705/InsightPilot</a>
+    <br>本页所有数字均来自项目实际运行记录（<a href="https://github.com/heji110705/InsightPilot/blob/main/docs/03-评测报告.md" target="_blank" rel="noopener">03-评测报告</a> / <a href="https://github.com/heji110705/InsightPilot/blob/main/docs/04-开发纪实.md" target="_blank" rel="noopener">04-开发纪实</a>）
+  </div>
+
+</div>
+</body>
+</html>
