@@ -10,13 +10,13 @@ tables:
       - {name: book_id, type: INTEGER, meaning: 书籍唯一标识, synonyms: [书, 图书, 书目]}
       - {name: title, type: TEXT, meaning: 书名, synonyms: [书名, 标题, 哪本书]}
       - {name: author_id, type: INTEGER, meaning: 作者ID，2 本为空, synonyms: [作者]}
-      - {name: author_name, type: TEXT, meaning: 作者姓名，已冗余，单表查作者不必 JOIN, synonyms: [作者, 作家, 谁写的]}
+      - {name: author_name, type: TEXT, meaning: "作者姓名，已冗余，单表查作者不必 JOIN；开头的 [英]/[美]/[日]/[法] 方括号是国别，(清)/(明) 是朝代，没有独立国别字段", synonyms: [作者, 作家, 谁写的, 国籍, 国别, 哪国作者]}
       - {name: publisher, type: TEXT, meaning: 出版社，未归一化, synonyms: [出版社, 出版方, 哪家出的]}
       - {name: pub_year, type: INTEGER, meaning: 出版年份 1962-2024, synonyms: [出版年份, 出版年, 哪年出版]}
       - {name: price, type: REAL, meaning: 定价（元），有脏值与 NULL, synonyms: [价格, 定价, 书价, 多少钱]}
       - {name: category, type: TEXT, meaning: 分类/题材，12 个取值, synonyms: [分类, 类型, 题材, 品类, 哪类书]}
       - {name: pages, type: INTEGER, meaning: 页数, synonyms: [页数, 厚度]}
-      - {name: binding, type: TEXT, meaning: 装帧，取值不干净, synonyms: [装帧, 平装, 精装]}
+      - {name: binding, type: TEXT, meaning: "装帧，8 个取值且不干净：精装 63 / 平装 181 / 软精装 1 / 精装16开 1 / 平裝 32开 1 / 平装-精装混合 1 / 套装 1 / 空 1", synonyms: [装帧, 平装, 精装]}
       - {name: rating_avg, type: REAL, meaning: 站内平均评分 0-10, synonyms: [评分, 打分, 分数]}
       - {name: rating_count, type: INTEGER, meaning: 站内评分人数 6-29, synonyms: [评分人数, 多少人打分]}
       - {name: douban_rating, type: REAL, meaning: 豆瓣评分 0-10，不同源, synonyms: [豆瓣评分, 豆瓣分]}
@@ -26,7 +26,8 @@ tables:
       - {name: positive_rate, type: REAL, meaning: 正向评论占比 0..1, synonyms: [好评率, 正面占比]}
     caveats:
       - rating_avg 与 douban_rating 都是 0-10 分但不同源，不可混用或相加；豆瓣系统性偏高（196/250 本更高，均值差 0.47）
-      - price 有 0.2 元这类脏值和 1 条 NULL，算均价前先 WHERE price > 1
+      - price 有 0.2 元这类脏值和 1 条 NULL，算均价前先 WHERE price > 1（不剔会虚高：平装 181 本的原始均价 40.72，剔后 173 本为 42.35）
+      - 装帧有两种口径，答案不同且都"对"：精确匹配 binding = '精装' 得 63 本；模糊匹配 binding LIKE '%精装%' 得 66 本（多出软精装、精装16开）。同类词（精装/平装）必须二选一并在结论里写明，不可混用
       - category 极不均衡（文学小说 139 本、语言文化 1 本），小分类的均值/比率没有统计意义
       - publisher 未归一化，存在"广州出版社 花城出版社"这类合并写法；按社比较均值要加 HAVING COUNT(*) >= 5
       - 2 本书 author_id 为空，JOIN dim_author 会丢行，要保留全部书用 LEFT JOIN
@@ -42,12 +43,13 @@ tables:
     meaning: "作者维度表（作者档案）。一行一位作者/作家，含姓名与生卒年。dim_book 已冗余 author_name，只查作者名不必 JOIN；查作者档案或对作者去重计数才用这张表。"
     columns:
       - {name: author_id, type: INTEGER, meaning: 作者唯一标识, synonyms: [作者ID]}
-      - {name: name, type: TEXT, meaning: 姓名，含"(清)曹雪芹"这类前缀, synonyms: [姓名, 作者名, 作家名]}
+      - {name: name, type: TEXT, meaning: "姓名，含 \"[英] J·K·罗琳\" 国别前缀、\"(清)曹雪芹\" 朝代前缀；国别/朝代只能从这里解析", synonyms: [姓名, 作者名, 作家名, 国别, 国籍]}
       - {name: life, type: TEXT, meaning: 生卒年自由文本，大量为空, synonyms: [生卒年]}
     caveats:
       - 本表 197 位作者，书目里只出现 184 位（13 位名下无书），"有多少作者"两个答案都对，看问的是档案还是出书作者
       - 2 本书 author_id 为空，INNER JOIN 会丢这 2 本
       - life 是自由文本（1904-1997 / ?-1763 / 空串），不能当数值年份运算
+      - 本表**没有 nationality 字段**。问「英国/美国/日本作家」只能解析 name 前缀：`name LIKE '[英]%'`（24 位作家、30 本书），绝不能写 life LIKE '%英国%'（life 只存生卒年）
     joins:
       - dim_author.author_id = dim_book.author_id
 

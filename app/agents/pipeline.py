@@ -14,8 +14,9 @@ from app.agents import nodes
 from app.agents.dims import DimIndex
 from app.agents.inferencers import TemplateInferencer, build_inferencer
 from app.core.config import Settings, load_settings
-from app.core.models import Answer, TurnState
+from app.core.models import Ambiguity, Answer, TurnState
 from app.core.protocols import Inferencer, LLMProvider
+from app.db.domain import missing_filter_values, note_for
 from app.db.repo import WarehouseRepo
 from app.harness.checkpoint import Checkpoint, SemanticCache
 from app.harness.context import RunContext
@@ -29,6 +30,64 @@ logger = logging.getLogger(__name__)
 
 
 VARIANTS = ("full", "single", "no_schema", "no_critic")
+
+
+def _single_zero(answer: Answer) -> bool:
+    """只有一个单元格、且值是 0 的结果。只有这种才可能是"空集冒充答案"。"""
+    if answer.rowcount != 1 or len(answer.rows) != 1:
+        return False
+    row = answer.rows[0]
+    if len(row) != 1:
+        return False
+    value = row[0]
+    return isinstance(value, (int, float)) and float(value) == 0.0
+
+
+def _flag_void_filter(answer: Answer, deps: Deps) -> Answer:
+    """0 结果反向校验：过滤条件里的字面量到底存不存在。
+
+    详见 ``app/db/domain.py`` 的模块注释。这里只负责把结论挂到答案上：
+    改 message、补一条 ambiguity，并且给结论句加上"这个 0 不代表没有"的前缀，
+    让下游无论怎么渲染都不会把 0 当成事实。
+    """
+    if answer.status != "ok" or not _single_zero(answer):
+        return answer
+    try:
+        issues = missing_filter_values(answer.sql, deps.repo)
+    except Exception:  # noqa: BLE001 —— 兜底逻辑不允许反向影响主链路
+        logger.info("void-filter check skipped", exc_info=True)
+        return answer
+    if not issues:
+        return answer
+
+    text = " ".join(note_for(i) for i in issues)
+    insight = answer.insight
+    if insight is not None:
+        insight = insight.model_copy(
+            update={
+                "headline": "这个 0 是空集，不是结论。",
+                "bullets": [text, *insight.bullets],
+                "footnotes": ["空集守卫：WHERE 里的取值在维表里查无此项", *insight.footnotes],
+            }
+        )
+    return answer.model_copy(
+        update={
+            "message": text,
+            "insight": insight,
+            "ambiguities": [
+                *answer.ambiguities,
+                *[
+                    Ambiguity(
+                        term=issue["value"],
+                        options=["库内不存在该取值"],
+                        chosen="",
+                        reason=note_for(issue),
+                    )
+                    for issue in issues
+                ],
+            ],
+        }
+    )
 
 
 @dataclass
@@ -228,6 +287,7 @@ def ask(
             "mode": settings.effective_mode,
         }
     )
+    answer = _flag_void_filter(answer, deps)
     recorder.finish(report.status if report.status != "error" else "error", answer.model_dump())
 
     if (
