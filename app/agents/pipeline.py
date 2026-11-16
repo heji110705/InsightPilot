@@ -115,6 +115,7 @@ def build_provider(settings: Settings) -> LLMProvider | None:
         timeout_s=settings.llm_timeout_s,
         max_tokens=settings.llm_max_tokens,
         temperature=settings.llm_temperature,
+        extra_body=settings.llm_extra_body,
     )
 
 

@@ -1,0 +1,35 @@
+# VPS 版 compose（与 DocuMind 共用一台 2C2G ECS）
+#
+# 用法：把本文件放到项目根目录，与 .env 同级，然后
+#   docker compose -f docker-compose.vps.yml up -d --build
+#
+# 三条硬约束，都是被那台机器的现实逼出来的：
+# 1. mem_limit 512m —— DocuMind 常驻约 890 MB，物理内存只有 1.7 GB。
+#    设了上限，最坏情况是它自己被 OOM kill 然后 restart，而不是把整机拖死
+#    （2026-11-16 就因为容器无上限，整机卡死过一次，SSH 和 Workbench 都进不去）。
+# 2. env_file .env —— .env 被 .dockerignore 挡在镜像外（Key 不该跟着镜像走），
+#    只能在运行期注入。compose 的 environment 只放容器级参数，
+#    避免"两处都能配、改错一处还以为生效了"。
+# 3. ports 8001:8000 —— 容器内仍是 8000，healthcheck 与代码都不用改；
+#    宿主机对外 8001，与 DocuMind 的 80 不冲突。
+services:
+  insightpilot:
+    build:
+      context: .
+      dockerfile: Dockerfile.vps
+    image: insightpilot:1.0
+    ports:
+      - "8001:8000"
+    env_file:
+      - .env
+    environment:
+      TZ: Asia/Shanghai
+    mem_limit: 512m
+    memswap_limit: 1024m
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health',timeout=3).status==200 else 1)"]
+      interval: 30s
+      timeout: 4s
+      retries: 3
+      start_period: 20s

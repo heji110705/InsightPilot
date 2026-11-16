@@ -1,0 +1,35 @@
+# VPS 版 InsightPilot 镜像（部署到阿里云 ECS 时用这个，不要用仓库根的 Dockerfile）
+#
+# 与原 Dockerfile 的唯一差别：FROM 走国内镜像源。
+# 原因：docker.io 在大陆被 DNS 污染，且 BuildKit 不读 daemon.json 的 registry-mirrors
+# ——这一点在部署 DocuMind 时已经踩过一次。
+FROM docker.1ms.run/library/python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+WORKDIR /app
+
+COPY requirements.txt ./
+# pip 走阿里云源：默认 PyPI 在这台机器上单包能等十几秒
+RUN pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ \
+        --trusted-host mirrors.aliyun.com -r requirements.txt
+
+COPY app/ ./app/
+COPY web/ ./web/
+COPY data/ ./data/
+COPY scripts/ ./scripts/
+
+RUN useradd --create-home --uid 10001 pilot \
+    && chown -R pilot:pilot /app
+USER pilot
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=4s --start-period=20s --retries=3 \
+    CMD python -c "import sys,urllib.request; \
+sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3).status == 200 else 1)"
+
+CMD ["python", "-m", "uvicorn", "app.api.server:app", "--host", "0.0.0.0", "--port", "8000"]

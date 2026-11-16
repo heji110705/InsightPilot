@@ -6,6 +6,7 @@ and an explicit loader is easier to audit than magic field resolution.
 """
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -50,6 +51,25 @@ def _env_float(key: str, default: float) -> float:
         return default
 
 
+def _env_json_dict(key: str) -> dict[str, object]:
+    """读一个 JSON 对象型环境变量，用来透传厂商私有参数。
+
+    为什么需要：不同厂商把关键开关藏在私有字段里（千问的 ``enable_thinking``、
+    通义的 ``repetition_penalty`` 等）。写死成配置项等于每换一家厂商改一次代码；
+    这里只做"透传"，语义交给部署方。
+
+    解析失败返回空 dict 而不是抛异常：一个写错的配置项不该让服务起不来。
+    """
+    raw = _env(key, "")
+    if not raw:
+        return {}
+    try:
+        val = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    return val if isinstance(val, dict) else {}
+
+
 @dataclass(slots=True)
 class Settings:
     # LLM
@@ -60,6 +80,9 @@ class Settings:
     llm_temperature: float = 0.0
     llm_timeout_s: int = 60
     llm_max_tokens: int = 1200
+    # 厂商私有参数透传（HTTP 请求体顶层字段）。例如关闭千问的思考模式：
+    #   IP_LLM_EXTRA_BODY={"enable_thinking": false}
+    llm_extra_body: dict[str, object] = field(default_factory=dict)
 
     # Data
     db_path: Path = field(default_factory=lambda: PROJECT_ROOT / "data" / "warehouse.sqlite")
@@ -113,6 +136,7 @@ def load_settings() -> Settings:
         llm_temperature=float(_env("IP_LLM_TEMPERATURE", "0") or 0),
         llm_timeout_s=_env_int("IP_LLM_TIMEOUT_S", 60),
         llm_max_tokens=_env_int("IP_LLM_MAX_TOKENS", 1200),
+        llm_extra_body=_env_json_dict("IP_LLM_EXTRA_BODY"),
         db_path=Path(_env("IP_DB_PATH", str(data_dir / "warehouse.sqlite"))),
         semantic_dir=Path(_env("IP_SEMANTIC_DIR", str(data_dir / "semantic"))),
         row_limit=_env_int("IP_ROW_LIMIT", 2000),

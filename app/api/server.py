@@ -27,10 +27,11 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any, AsyncIterator, Callable
 
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
 from app.agents.pipeline import Deps, ask, get_deps
+from app.limits import build_from_env
 from app.api.schemas import (
     AskRequest,
     AskResponse,
@@ -68,6 +69,62 @@ app = FastAPI(
     version="1.0.0",
     description="问数引擎的 HTTP 外壳：同步问数、SSE 节点流、trace 回放、单页前端。",
 )
+
+# ---------------------------------------------------------------------------
+# 公开演示的防刷闸门
+# ---------------------------------------------------------------------------
+#: 只拦问数。``/api/stats`` 是前端每几秒轮询一次的，把它也拦了等于页面自己刷自己。
+_LIMITED_PATHS = frozenset({"/api/ask", "/api/ask/stream"})
+_limiter = build_from_env()
+
+
+def _client_ip(request: Request) -> str:
+    """取访客 IP。
+
+    容器用 ``ports: 8001:8000`` 直通发布，iptables DNAT 会保留源地址，
+    所以 ``request.client.host`` 通常就是真实 IP（实测访问日志里是公网 IP）。
+    仍然先看 ``X-Forwarded-For``：将来若在前面挂 nginx，这一行不用改。
+    """
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        first = forwarded.split(",")[0].strip()
+        if first:
+            return first
+    return request.client.host if request.client else "unknown"
+
+
+@app.middleware("http")
+async def demo_rate_limit(request: Request, call_next):
+    """开放演示的限流。只对问数接口生效，且**成功处理后才计数**。
+
+    失败开放（fail-open）：限流器自己出异常时放行。宁可少挡一次，
+    也不要让一个 bug 把整个 Demo 变成 500。
+    """
+    if request.method != "POST" or request.url.path not in _LIMITED_PATHS:
+        return await call_next(request)
+
+    try:
+        ip = _client_ip(request)
+        allowed, wait_s, reason = _limiter.check(ip)
+    except Exception:                                  # noqa: BLE001
+        logger.exception("rate limiter failed, fail-open")
+        return await call_next(request)
+
+    if not allowed:
+        return JSONResponse(
+            status_code=429,
+            content={"detail": reason},
+            headers={"Retry-After": str(wait_s)},
+        )
+
+    response = await call_next(request)
+    # 参数校验失败（422）不该消耗访客的额度，所以只在成功时记账。
+    if response.status_code < 400:
+        try:
+            _limiter.hit(ip)
+        except Exception:                              # noqa: BLE001
+            logger.exception("rate limiter hit failed")
+    return response
 
 
 # ---------------------------------------------------------------------------

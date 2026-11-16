@@ -7,12 +7,20 @@
 
 > 上图是真实运行截图（`scripts/shots.py` 抓取，非设计稿）：右侧栏是 7 个节点的真实耗时与召回依据。
 
+**在线 Demo：<http://8.163.90.97:8001/>**（阿里云 ECS 2C2G + Docker Compose，点开即问，无需注册）
+· 同机还有 **DocuMind <http://8.163.90.97/>**（文档问答）
+· 部署与防刷说明见 [`deploy/`](deploy/) 与本文末「线上部署」一节
+
+> Demo 跑在**百炼 `qwen3.8-flash`（关闭思考模式）**上，用免费额度；不是离线模板。
+> 问一句平均 3 次模型调用、约 3.3k token、6~9 秒返回。
+> 与 DocuMind 刻意用**不同模型**，因为百炼的免费额度是按模型各 1M——同模型会互相消耗。
+
 | | |
 |---|---|
 | 60 题评测集 | 严格 EX **50.0%**，列覆盖一致 **57.5%**（两轮均值）；规则基线 18.3% |
 | 测试 | 267 个用例，全绿 |
 | 端到端延迟 | p50 约 5.7 s（含 3 次模型调用）；规则基线 p50 120 ms |
-| 单题成本 | 约 ¥0.005（约 4900 token/题，DeepSeek-chat） |
+| 单题成本 | 约 ¥0.005（约 4900 token/题，DeepSeek-chat）；线上 `qwen3.8-flash` 实测约 3.3k token/题、折 ¥0.0035，免费额度内实扣 ¥0 |
 | 零配置可跑 | 不配 API Key 也能完整走通界面、SSE、trace、评测 |
 
 ---
@@ -223,3 +231,70 @@ insightpilot/
 | `docs/06-评测集审计.md` | 修正 8 道题面与金标准的矛盾，保留 v1 快照 |
 | `docs/09-原型自测与修复记录.md` | 5 屏原型的 23 项交互用例、根因与改法 |
 | `docs/10-完整链路实测与口径对齐.md` | 12 条问题在真链路上的实测、四处口径分歧，以及「能不能不走链路直接答」的边界 |
+
+---
+
+## 线上部署（阿里云 ECS 2C2G，与 DocuMind 同机）
+
+部署文件在 [`deploy/`](deploy/)：`Dockerfile.vps`（FROM 走国内源）+
+`docker-compose.vps.yml`（`ports: 8001:8000`、`env_file: .env`、`mem_limit: 512m`）。
+
+```bash
+# 服务器上，项目根目录
+docker compose -f docker-compose.vps.yml up -d --build
+curl -s http://127.0.0.1:8001/api/health    # 看 mode 是不是 api
+```
+
+### 环境变量
+
+| 变量 | 线上值 | 说明 |
+|---|---|---|
+| `IP_LLM_MODE` | `api` | `stub` = 规则模板（零 key 可跑）；`api` = 真模型 |
+| `IP_LLM_BASE_URL` | 百炼**工作空间专属**兼容端点 | 不是 `dashscope.aliyuncs.com`，见控制台 API-KEY 页 |
+| `IP_LLM_MODEL` | `qwen3.8-flash` | 与 DocuMind 的 `qwen3.7-flash` 分开，避免共用 1M 额度 |
+| `IP_LLM_EXTRA_BODY` | `{"enable_thinking": false}` | **必须关**：不关时一句"收到"能烧掉 19~273 个 token，首字慢 3 秒 |
+| `IP_PRICE_IN_PER_M` / `IP_PRICE_OUT_PER_M` | `0.8` / `2.7` | 百炼公开价，只用于折算展示 |
+| `IP_RATE_PER_MIN` / `IP_RATE_PER_DAY` / `IP_RATE_DAILY_TOTAL` | `6` / `20` / `60` | 公开演示的防刷闸门 |
+
+`.env` 被 `.dockerignore` 挡在镜像外，所以配置走 `env_file` 在运行期注入——
+**Key 不该跟着镜像走**。这也意味着改配置只需 `--force-recreate`，不用重建镜像。
+
+### 公开演示的防刷（`app/limits.py`）
+
+无鉴权的 Demo，任何人拿到 IP 都能问，而一次问数是 3~6 次模型调用。三层限制：
+
+| 层 | 目的 |
+|---|---|
+| 每 IP 每分钟 6 次 | 挡脚本（高并发、固定 IP） |
+| 每 IP 每天 20 次 | 挡单个访客把额度用光 |
+| 全站每天 60 次 | 挡换 IP / 分布式刷法，损失封顶 |
+
+只拦 `POST /api/ask` 与 `/api/ask/stream`；`/api/stats` 是前端轮询的，拦了等于页面自己刷自己。
+`check` / `hit` 分两步，422 参数校验失败不扣额度；限流器自身异常时**放行**（fail-open）。
+
+实测（同一 IP 连发）：
+
+```
+第 1~6 次 200 → 第 7 次 429 {"detail":"请求过于频繁（每分钟最多 6 次）"}
+期间 /、/api/stats 全部 200
+```
+
+### 内存实测（`docker stats`）
+
+| 容器 | 常驻 | 上限 |
+|---|---|---|
+| documind | 约 845~897 MiB | 未设（3g > 物理内存，等于不限） |
+| insightpilot | **51~72 MiB** | 512 MiB |
+| 宿主可用 | 约 400 MiB | 物理 1.7 GB + 4 GB swap |
+
+比预估的 300 MB 小得多：模型不在本地，进程只装 Python + pandas + 一次请求的状态。
+并发 4 个 DocuMind 提问期间，它仍 78 ms 返回 200。
+
+### 本次部署踩到的坑
+
+1. **`.env` 被 `.dockerignore` 挡住，容器里没有它** → `load_settings()` 读不到，
+   一直停在 `mode: stub`。改成 compose 的 `env_file` 后恢复正常。
+   教训：`mode` 不对时先 `docker exec ... env | grep IP_`，别看代码。
+2. **厂商私有参数不能塞进 payload 的标准字段**：`enable_thinking` 必须和 `max_tokens`
+   平级（HTTP 请求体），不是 SDK 的 `extra_body` 关键字。这个实现了透传，
+   并让标准字段**永远覆盖**透传值——否则一个写错的 JSON 能把 `max_tokens` 顶掉。

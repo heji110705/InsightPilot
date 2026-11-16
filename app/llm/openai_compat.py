@@ -31,6 +31,7 @@ class OpenAICompatProvider:
         max_tokens: int = 1200,
         temperature: float = 0.0,
         max_attempts: int = 2,
+        extra_body: dict[str, object] | None = None,
     ) -> None:
         if not api_key:
             raise LLMError("未配置 API Key（IP_LLM_API_KEY）")
@@ -41,6 +42,10 @@ class OpenAICompatProvider:
         self.max_tokens = max_tokens
         self.temperature = temperature
         self.max_attempts = max_attempts
+        # 厂商私有参数（如千问的 enable_thinking）必须走 payload 顶层直接展开。
+        # 注意：这是 HTTP 请求体，不是 openai SDK 的 extra_body 关键字——
+        # 这里用 httpx 自己拼 JSON，所以厂商字段与 max_tokens 是平级的。
+        self.extra_body = dict(extra_body or {})
 
     def complete(self, *, system: str, user: str, json_mode: bool = False) -> LLMResult:
         payload: dict[str, object] = {
@@ -52,6 +57,10 @@ class OpenAICompatProvider:
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
         }
+        # 厂商私有参数先铺上去，再由上面这几个标准字段覆盖——标准字段永远优先，
+        # 避免一个写错的 JSON 把 max_tokens 顶掉、把成本放飞。
+        merged = {**self.extra_body, **payload}
+        payload = merged
         if json_mode:
             payload["response_format"] = {"type": "json_object"}
 
