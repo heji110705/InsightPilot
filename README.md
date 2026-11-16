@@ -290,6 +290,15 @@ curl -s http://127.0.0.1:8001/api/health    # 看 mode 是不是 api
 比预估的 300 MB 小得多：模型不在本地，进程只装 Python + pandas + 一次请求的状态。
 并发 4 个 DocuMind 提问期间，它仍 78 ms 返回 200。
 
+### 公开演示的四条加固（2026-11-16）
+
+| 问题 | 改法 | 验证 |
+|---|---|---|
+| `/api/traces` 把**所有访客**问过的问题列出来 | 必须带 `?session=<会话号>`，不传返回空列表；单条详情仍按随机 `turn_id` 可取 | `curl /api/traces` → `count:0` |
+| `/docs` 与 `/openapi.json` 公网可读，等于接口地图 | 默认关闭（`IP_DOCS=1` 可开） | 两个地址均 404 |
+| 过滤值写错（如 `category='四大名著'`）却报"没有数据" | 零行时回查该值是否存在，不存在就把真实取值列表回灌给模型重试一次（`app/db/probe.py`） | 问「武侠小说有哪些书」→ 链路出现 `sqlcraft → executor` 重试，最终 4 行 |
+| 缓存永不过期、也不跟数据变化 | 默认 TTL 24h（`IP_CACHE_TTL_S`）；缓存键加入数仓文件指纹 | 过期条目当未命中并被删除；`cache_key` 随文件 mtime/size 变化 |
+
 ### 本次部署踩到的坑
 
 1. **`.env` 被 `.dockerignore` 挡住，容器里没有它** → `load_settings()` 读不到，

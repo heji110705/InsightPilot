@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import queue
 import sqlite3
 import time
@@ -64,10 +65,17 @@ _MEDIA_TYPES = {
     ".json": "application/json; charset=utf-8",
 }
 
+# 自动文档默认关闭：/docs 会把所有接口（含 /api/traces）列在公网上，
+# 等于给访客一张"这里还能这么调"的地图。需要时显式 IP_DOCS=1 打开。
+_DOCS_ON = os.environ.get("IP_DOCS", "0").strip() == "1"
+
 app = FastAPI(
     title="InsightPilot",
     version="1.0.0",
     description="问数引擎的 HTTP 外壳：同步问数、SSE 节点流、trace 回放、单页前端。",
+    docs_url="/docs" if _DOCS_ON else None,
+    redoc_url=None,
+    openapi_url="/openapi.json" if _DOCS_ON else None,
 )
 
 # ---------------------------------------------------------------------------
@@ -280,6 +288,13 @@ async def _stream(req: AskRequest) -> AsyncIterator[str]:
         logger.exception("stream ask failed")
         yield _sse("error", {"message": f"{type(exc).__name__}: {exc}"})
         return
+    finally:
+        # 客户端关页面 / 点停止时，生成器会在 yield 处被关闭，走到这里。
+        # 注意能力边界：ask() 跑在 to_thread 里，Python 无法杀线程，
+        # cancel 只是让 asyncio 侧立刻放手（不再挂着等待、不刷 "task pending"），
+        # 真正的止损要等引擎支持协作式取消。这里把话说清楚，不假装能省下那几次调用。
+        if not task.done():
+            task.cancel()
 
     yield _sse("done", {
         "answer": answer.model_dump(mode="json"),
@@ -304,8 +319,19 @@ async def ask_stream(req: AskRequest) -> StreamingResponse:
 # 可观测性
 # ---------------------------------------------------------------------------
 @app.get("/api/traces", response_model=TracesResponse)
-def list_traces(limit: int = Query(30, ge=1, le=200)) -> TracesResponse:
-    rows = engine_deps().trace_store.list_turns(limit)
+def list_traces(
+    session: str = Query("", max_length=64, description="会话号；不传则返回空列表"),
+    limit: int = Query(30, ge=1, le=200),
+) -> TracesResponse:
+    """按会话号返回历史轮次。
+
+    不传 ``session`` 时返回空列表，而不是"全部"——这是公开演示，
+    列出全部等于把所有访客问过的问题摊开给别人看（2026-11-16 修）。
+    单个 turn 的详情仍可按 turn_id 取，那串是随机 12 位十六进制，猜不到。
+    """
+    if not session:
+        return TracesResponse(turns=[], count=0, limit=limit)
+    rows = engine_deps().trace_store.list_turns(limit, session_id=session)
     turns = [TurnHeader(**row) for row in rows]
     return TracesResponse(turns=turns, count=len(turns), limit=limit)
 

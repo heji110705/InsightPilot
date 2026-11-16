@@ -150,7 +150,7 @@ def build_deps(
         inferencer=inferencer,
         provider=provider,
         checkpoint=Checkpoint(settings.state_db_path),
-        cache=SemanticCache(settings.state_db_path),
+        cache=SemanticCache(settings.state_db_path, ttl_s=settings.cache_ttl_s),
         variant=variant,
     )
 
@@ -220,6 +220,7 @@ def cache_key(
     mode: str,
     inferencer_name: str,
     semantic_digest: str = "",
+    data_digest: str = "",
 ) -> str:
     """SQL 缓存的键。
 
@@ -228,7 +229,8 @@ def cache_key(
     表现成"改了没生效"。语义层一变，缓存就该整体失效。
     """
     raw = "|".join(
-        [question.strip().lower(), schema_digest, semantic_digest, mode, inferencer_name]
+        [question.strip().lower(), schema_digest, semantic_digest, data_digest,
+         mode, inferencer_name]
     )
     return hashlib.md5(raw.encode("utf-8")).hexdigest()
 
@@ -259,6 +261,7 @@ def ask(
         question, deps.repo.schema_digest(), settings.effective_mode,
         f"{deps.inferencer.name}:{deps.variant}",
         getattr(deps.bundle, "digest", ""),
+        deps.repo.data_digest(),
     )
 
     if use_cache and deps.cache is not None and settings.cache_enabled:

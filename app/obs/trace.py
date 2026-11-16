@@ -101,14 +101,26 @@ class TraceStore:
             )
 
     # -- reads -------------------------------------------------------------
-    def list_turns(self, limit: int = 50) -> list[dict[str, Any]]:
-        """Newest first. Keys match what the API layer renders (no payload here)."""
+    def list_turns(self, limit: int = 50, session_id: str | None = None) -> list[dict[str, Any]]:
+        """Newest first. Keys match what the API layer renders (no payload here).
+
+        传 ``session_id`` 就只返回该会话的轮次——公开演示里这是**必须**的：
+        不传就等于把"所有访客问过什么"列出来。
+        """
         with self._cursor() as cur:
-            rows = cur.execute(
-                "SELECT turn_id, session_id, question, mode, status, elapsed_ms, created_at"
-                " FROM turns ORDER BY created_at DESC, rowid DESC LIMIT ?",
-                (int(limit),),
-            ).fetchall()
+            if session_id:
+                rows = cur.execute(
+                    "SELECT turn_id, session_id, question, mode, status, elapsed_ms, created_at"
+                    " FROM turns WHERE session_id = ?"
+                    " ORDER BY created_at DESC, rowid DESC LIMIT ?",
+                    (session_id, int(limit)),
+                ).fetchall()
+            else:
+                rows = cur.execute(
+                    "SELECT turn_id, session_id, question, mode, status, elapsed_ms, created_at"
+                    " FROM turns ORDER BY created_at DESC, rowid DESC LIMIT ?",
+                    (int(limit),),
+                ).fetchall()
         keys = ("turn_id", "session_id", "question", "mode", "status", "elapsed_ms", "created_at")
         return [dict(zip(keys, row)) for row in rows]
 

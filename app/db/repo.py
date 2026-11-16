@@ -123,6 +123,44 @@ class WarehouseRepo:
         rows = self._fetch(f"EXPLAIN QUERY PLAN {verdict.sql}", limit=None)[1]
         return "\n".join(" | ".join("" if v is None else str(v) for v in row) for row in rows)
 
+    def data_digest(self) -> str:
+        """数仓文件的指纹（mtime + size），进 SQL 缓存键。
+
+        为什么需要它：``schema_digest`` 只看表名与列名，ETL 重跑后结构没变、
+        数据变了，缓存照样命中，于是拿旧 SQL 对着新数据出结论。
+        这里只看文件元信息，不做全表哈希——毫秒级，代价可以忽略。
+        """
+        try:
+            st = self.path.stat()
+        except OSError:
+            return ""
+        return f"{st.st_mtime_ns:x}-{st.st_size:x}"
+
+    def count_where(self, table: str, column: str, value: str) -> int:
+        """某表某列等于某值的行数。给"零行探测"用。
+
+        表名与列名先对白名单校验（都来自 sqlite_master），值走绑定参数——
+        这个函数会被模型生成的 SQL 驱动，不能拼字符串。
+        """
+        self._assert_column(table, column)
+        sql = f'SELECT COUNT(*) FROM "{table}" WHERE "{column}" = ?'
+        return int(self._fetch(sql, limit=None, params=(value,))[1][0][0])
+
+    def distinct_values(self, table: str, column: str, limit: int = 8) -> list[str]:
+        """某列的若干取值（按出现频次降序），用于告诉模型"其实有这些"。"""
+        self._assert_column(table, column)
+        sql = (
+            f'SELECT "{column}" FROM "{table}" WHERE "{column}" IS NOT NULL '
+            f'GROUP BY "{column}" ORDER BY COUNT(*) DESC LIMIT {max(1, int(limit))}'
+        )
+        return [str(row[0]) for row in self._fetch(sql, limit=None)[1]]
+
+    def _assert_column(self, table: str, column: str) -> None:
+        if table not in self.table_names():
+            raise QueryFailed(f"表 {table} 不在可查询范围", stage="guard", hint=_GUARD_HINT)
+        if column not in self._columns_of(table):
+            raise QueryFailed(f"列 {column} 不属于 {table}", stage="guard", hint=_GUARD_HINT)
+
     def close(self) -> None:
         with self._lock:
             if self._conn is not None:

@@ -12,6 +12,7 @@ import logging
 from app.agents.stats import repair_insight
 from app.core.models import Answer, ExecutionError, SQLContext, TurnState, Verdict
 from app.db.guard import validate_sql
+from app.db.probe import hint_text, missing_equalities
 from app.db.repo import QueryFailed
 from app.harness.context import RunContext
 from app.harness.graph import NodeResult
@@ -148,6 +149,26 @@ def executor(state: TurnState, ctx: RunContext) -> NodeResult:
             status="retry",
             meta={"stage": exc.stage, "message": exc.message[:120]},
         )
+
+    # 零行不等于"没有数据"：先看是不是过滤值本身就不存在。
+    # 只在第一次执行（retries==0）时探测，避免"改一版还是 0 行"来回打转。
+    if result.rowcount == 0 and state.retries == 0:
+        found = missing_equalities(guard.sql, ctx.repo)
+        if found:
+            error = ExecutionError(
+                stage="execute",
+                message="查询返回 0 行，但原因是过滤值在库里不存在，不是数据没有。",
+                hint=hint_text(found),
+                sql=guard.sql,
+            )
+            return NodeResult(
+                patch={"error": error, "retries": state.retries + 1},
+                status="retry",
+                meta={
+                    "reason": "missing_value",
+                    "probes": [f"{f['table']}.{f['column']}" for f in found],
+                },
+            )
 
     return NodeResult(
         patch={

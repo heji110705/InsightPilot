@@ -146,14 +146,25 @@ def test_ask_accepts_history_and_session(client: TestClient) -> None:
 # trace
 # ---------------------------------------------------------------------------
 def test_traces_list_after_ask(client: TestClient, first_ask: dict) -> None:
-    res = client.get("/api/traces", params={"limit": 30})
+    """按会话号能查到自己刚跑过的那一轮。
+
+    不传会话号时返回空列表是有意为之（公开演示不能列出别人的提问），
+    所以这里显式带上 first_ask 用的那个 session_id。
+    """
+    res = client.get("/api/traces", params={"limit": 30, "session": "test-s1"})
     assert res.status_code == 200
     body = res.json()
-    assert body["turns"], "跑过一次 ask 后 traces 不该为空"
+    assert body["turns"], "跑过一次 ask 后该会话的 traces 不该为空"
     assert body["count"] == len(body["turns"])
     ids = [turn["turn_id"] for turn in body["turns"]]
     assert first_ask["answer"]["trace_id"] in ids
     assert body["turns"][0]["question"]
+
+
+def test_traces_without_session_is_empty(client: TestClient, first_ask: dict) -> None:
+    """这一条是隐私边界，单独钉住：不传会话号就什么都看不到。"""
+    body = client.get("/api/traces").json()
+    assert body["count"] == 0 and body["turns"] == []
 
 
 def test_trace_detail_returns_spans(client: TestClient, first_ask: dict) -> None:

@@ -104,6 +104,9 @@ class Settings:
 
     # Cache
     cache_enabled: bool = True
+    # SQL 缓存的有效期（秒）。0 = 永不过期。数仓会变，缓存不校验结果是否仍成立，
+    # 所以默认给 24 小时——过了就重算一次，而不是拿旧 SQL 对着新数据出结论。
+    cache_ttl_s: int = 86400
 
     # 成本折算单价（元 / 百万 token）。默认值按 DeepSeek-chat 公开价填，
     # 只用于横向比较「多跑一个 Agent 贵多少」，不作为账单依据。
@@ -148,6 +151,7 @@ def load_settings() -> Settings:
         state_db_path=Path(_env("IP_STATE_DB", str(data_dir / "runtime.sqlite"))),
         trace_enabled=_env_bool("IP_TRACE", True),
         cache_enabled=_env_bool("IP_CACHE", True),
+        cache_ttl_s=_env_int("IP_CACHE_TTL_S", 86400),
         price_in_per_m=_env_float("IP_PRICE_IN_PER_M", 1.0),
         price_out_per_m=_env_float("IP_PRICE_OUT_PER_M", 2.0),
     )

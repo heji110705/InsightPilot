@@ -139,12 +139,21 @@ class SemanticCache(_SqliteStore):
     point in the eval), and an in-process counter would reset on every reload.
     """
 
+    def __init__(self, path: Path | str, ttl_s: int = 86400) -> None:
+        super().__init__(path)
+        # 0 = 永不过期。默认 24 小时：数仓是会变的，一条上周的 SQL 命中今天的数据
+        # 未必还成立，而这条路径本身不校验结果是否仍然正确。
+        self.ttl_s = max(0, int(ttl_s))
+
     def get(self, key: str) -> dict[str, Any] | None:
         """Return the cached payload, or ``None`` on miss. Counts the lookup."""
         with self._cursor() as cur:
             row = cur.execute(
-                "SELECT value_json FROM semantic_cache WHERE key = ?", (key,)
+                "SELECT value_json, created_at FROM semantic_cache WHERE key = ?", (key,)
             ).fetchone()
+        if row is not None and self._expired(row[1]):
+            self.delete(key)
+            row = None
         if row is None:
             self._bump("misses")
             return None
@@ -169,6 +178,25 @@ class SemanticCache(_SqliteStore):
                 (key, payload, _now()),
             )
         self._bump("writes")
+
+    def delete(self, key: str) -> None:
+        """删掉一条缓存（过期清理用）。不存在也不报错。"""
+        with self._cursor() as cur:
+            cur.execute("DELETE FROM semantic_cache WHERE key = ?", (key,))
+
+    def _expired(self, created_at: str) -> bool:
+        """按写入时间判断是否过期。
+
+        ``ttl_s<=0`` 表示永不过期；时间戳解析失败按"过期"处理——
+        一条读不出时间的缓存，宁可重算一次，也不要拿它当答案。
+        """
+        if self.ttl_s <= 0:
+            return False
+        try:
+            written = datetime.fromisoformat(str(created_at))
+        except (TypeError, ValueError):
+            return True
+        return (datetime.now() - written).total_seconds() > self.ttl_s
 
     def hit_rate(self) -> float:
         """``hits / (hits + misses)`` as a fraction in ``[0, 1]``; 0.0 before any lookup."""
