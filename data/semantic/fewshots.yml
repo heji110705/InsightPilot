@@ -1,5 +1,5 @@
 version: 1
-# 24 条范例。全部实测可执行且结果非空（scripts/check_semantic.py 会逐条复跑）。
+# 25 条范例。全部实测可执行且结果非空（scripts/check_semantic.py 会逐条复跑）。
 # 选取原则：覆盖计数 / 分组 / TOP N / 时间序列 / 比率 / 多表 JOIN / 子查询 / 窗口函数，
 # 并且每条 note 都写清"为什么这么写"，让模型学到口径而不只是语法。
 examples:
@@ -122,3 +122,8 @@ examples:
     sql: "SELECT b.publisher AS 出版社, COUNT(DISTINCT b.book_id) AS 书籍数, ROUND(1.0 * COUNT(s.shelf_id) / COUNT(DISTINCT b.book_id), 1) AS 书均收藏数 FROM dim_book b JOIN fact_shelf s ON s.book_id = b.book_id GROUP BY b.publisher HAVING COUNT(DISTINCT b.book_id) >= 5 ORDER BY ROUND(1.0 * COUNT(s.shelf_id) / COUNT(DISTINCT b.book_id), 1) DESC LIMIT 10"
     note: "用书均而不是总收藏，否则出版社规模决定排名；HAVING 去掉只有 1-4 本的长尾社"
     tags: [多表JOIN, 比率, HAVING]
+
+  - question: "四大名著在库里都有吗"
+    sql: "SELECT title AS 书名, category AS 分类 FROM dim_book WHERE title LIKE '%红楼梦%' OR title LIKE '%三国演义%' OR title LIKE '%西游记%' OR title LIKE '%水浒传%' LIMIT 50"
+    note: "「四大名著」是题材俗称，不是 category 的取值（category 只有 12 个，见 dim_book 卡片）；这类问题要落到书名上匹配。写成 category = '四大名著' 必然 0 行"
+    tags: [文本匹配, 单表, 维度取值]

@@ -82,7 +82,7 @@ def main() -> int:
         for line in failures:
             print(f"  - {line}")
         return 1
-    print("结论：PASS　条数达标，20 个模板空槽位可直跑，24 条范例全部有数据")
+    print(f"结论：PASS　条数达标，{len(empty_cell)} 个单行单列指标可直跑，{len(bundle.fewshots)} 条范例全部有数据")
     print(f"　单行单列的指标：{', '.join(empty_cell)}")
     return 0
 

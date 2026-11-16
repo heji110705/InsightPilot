@@ -14,7 +14,7 @@ tables:
       - {name: publisher, type: TEXT, meaning: 出版社，未归一化, synonyms: [出版社, 出版方, 哪家出的]}
       - {name: pub_year, type: INTEGER, meaning: 出版年份 1962-2024, synonyms: [出版年份, 出版年, 哪年出版]}
       - {name: price, type: REAL, meaning: 定价（元），有脏值与 NULL, synonyms: [价格, 定价, 书价, 多少钱]}
-      - {name: category, type: TEXT, meaning: 分类/题材，12 个取值, synonyms: [分类, 类型, 题材, 品类, 哪类书]}
+      - {name: category, type: TEXT, meaning: "分类/题材，只有这 12 个取值：文学小说 139 / 诗歌散文 22 / 历史人文 21 / 传记纪实 15 / 哲学宗教 12 / 少儿读物 11 / 社会科学 11 / 科学科普 5 / 艺术设计 5 / 心理励志 4 / 经济管理 4 / 语言文化 1。等值匹配只能用这些词", synonyms: [分类, 类型, 题材, 品类, 哪类书]}
       - {name: pages, type: INTEGER, meaning: 页数, synonyms: [页数, 厚度]}
       - {name: binding, type: TEXT, meaning: "装帧，8 个取值且不干净：精装 63 / 平装 181 / 软精装 1 / 精装16开 1 / 平裝 32开 1 / 平装-精装混合 1 / 套装 1 / 空 1", synonyms: [装帧, 平装, 精装]}
       - {name: rating_avg, type: REAL, meaning: 站内平均评分 0-10, synonyms: [评分, 打分, 分数]}
@@ -28,7 +28,7 @@ tables:
       - rating_avg 与 douban_rating 都是 0-10 分但不同源，不可混用或相加；豆瓣系统性偏高（196/250 本更高，均值差 0.47）
       - price 有 0.2 元这类脏值和 1 条 NULL，算均价前先 WHERE price > 1（不剔会虚高：平装 181 本的原始均价 40.72，剔后 173 本为 42.35）
       - 装帧的两种口径都"对"，差别在写法：精确匹配能分出「精装 63 / 平装 181」，LIKE '%精装%' 会把软精装、精装16开一并算进来得 66。答「精装多还是平装多」时必须二选一，并在结论里写明用的是哪种
-      - category 极不均衡（文学小说 139 本、语言文化 1 本），小分类的均值/比率没有统计意义
+      - category 只有上面那 12 个取值，「四大名著」「推理小说」「网络文学」这类是**题材俗称，不是取值**——别写 category = '俗称'（必然 0 行），要落到书名/作者上匹配，或如实说分类里没有这个值；另外取值极不均衡，小分类的均值/比率没有统计意义
       - publisher 未归一化，存在"广州出版社 花城出版社"这类合并写法；按社比较均值要加 HAVING COUNT(*) >= 5
       - 2 本书 author_id 为空，JOIN dim_author 会丢行，要保留全部书用 LEFT JOIN
     joins:
