@@ -13,6 +13,7 @@ synonyms 字段。为了让"评分"能命中 `rating_avg`，这里把列的意�
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 from dataclasses import dataclass, field
@@ -46,6 +47,10 @@ class SemanticBundle:
     synonyms: dict[str, list[str]] = field(default_factory=dict)
     join_hints: list[str] = field(default_factory=list)
     defaults: dict[str, Any] = field(default_factory=dict)
+    #: 语义层内容的 md5（前 12 位）。用途：进 SQL 缓存键。
+    #: 没有它的话，改完卡片再问同一个问题会命中旧缓存，看起来像"改了没生效"——
+    #: 2026-11-16 修「四大名著」时踩到了这个问题，当时只是侥幸因为重建容器清了缓存。
+    digest: str = ""
 
 
 # --------------------------------------------------------------------------
@@ -214,6 +219,26 @@ def _merge_defaults(doc: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return merged
 
 
+_DIGEST_FILES = ("tables.yml", "metrics.yml", "fewshots.yml", "synonyms.yml", "defaults.yml")
+
+
+def _semantic_digest(root: Path) -> str:
+    """语义层内容的指纹：按固定顺序喂文件名与字节，取 md5 前 12 位。
+
+    存在的意义只有一个：**进 SQL 缓存键**。卡片改了（比如给 category 补上取值域），
+    同一个问题的缓存就该失效；否则模型生成的仍是旧 SQL，你看到的是"改了没生效"。
+
+    缺文件不跳过整段——用文件名 + 空内容占位，这样"加了一个文件"和"删了一个文件"
+    都会改变指纹，而不是恰好撞上同一个值。
+    """
+    h = hashlib.md5()
+    for name in _DIGEST_FILES:
+        path = root / name
+        h.update(name.encode("utf-8"))
+        h.update(path.read_bytes() if path.is_file() else b"")
+    return h.hexdigest()[:12]
+
+
 def load_semantic(directory: Path) -> SemanticBundle:
     """读一个语义层目录；任何文件缺失/损坏都退化成空集合而不是抛异常。"""
     root = Path(directory)
@@ -238,6 +263,7 @@ def load_semantic(directory: Path) -> SemanticBundle:
         synonyms=synonyms,
         join_hints=joins,
         defaults=defaults,
+        digest=_semantic_digest(root),
     )
 
 

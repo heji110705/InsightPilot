@@ -214,8 +214,22 @@ def build_graph(settings: Settings, variant: str = "full") -> Graph:
     return graph
 
 
-def cache_key(question: str, schema_digest: str, mode: str, inferencer_name: str) -> str:
-    raw = "|".join([question.strip().lower(), schema_digest, mode, inferencer_name])
+def cache_key(
+    question: str,
+    schema_digest: str,
+    mode: str,
+    inferencer_name: str,
+    semantic_digest: str = "",
+) -> str:
+    """SQL 缓存的键。
+
+    ``semantic_digest`` 是 2026-11-16 补的：只带 schema 的话，改完卡片（例如给
+    category 补上取值域）再问同一个问题会命中旧缓存，旧 SQL 照旧返回 0 行，
+    表现成"改了没生效"。语义层一变，缓存就该整体失效。
+    """
+    raw = "|".join(
+        [question.strip().lower(), schema_digest, semantic_digest, mode, inferencer_name]
+    )
     return hashlib.md5(raw.encode("utf-8")).hexdigest()
 
 
@@ -244,6 +258,7 @@ def ask(
     key = cache_key(
         question, deps.repo.schema_digest(), settings.effective_mode,
         f"{deps.inferencer.name}:{deps.variant}",
+        getattr(deps.bundle, "digest", ""),
     )
 
     if use_cache and deps.cache is not None and settings.cache_enabled:
