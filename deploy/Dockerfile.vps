@@ -3,7 +3,12 @@
 # 与原 Dockerfile 的唯一差别：FROM 走国内镜像源。
 # 原因：docker.io 在大陆被 DNS 污染，且 BuildKit 不读 daemon.json 的 registry-mirrors
 # ——这一点在部署 DocuMind 时已经踩过一次。
-FROM docker.1ms.run/library/python:3.12-slim
+#
+# 为什么是 daocloud 而不是 docker.1ms.run：
+# 后者当时能用，但它是第三方加速站，稳定性无从保证；而 docker.1ms.run 一旦失效，
+# 报错是 DNS/超时，很容易被误读成"网络问题"。daocloud 是长期维护的镜像站，
+# 2026-11-16 实测 `docker pull docker.m.daocloud.io/library/python:3.12-slim` 可拉取。
+FROM docker.m.daocloud.io/library/python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
