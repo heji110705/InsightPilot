@@ -119,15 +119,31 @@ def build_provider(settings: Settings) -> LLMProvider | None:
     )
 
 
+def resolve_variant(settings: Settings, requested: str | None) -> str:
+    """决定用哪张图。
+
+    显式给了 ``variant`` 就照办（评测要的就是这个：full / no_critic 必须能分别跑）；
+    没给（服务端、CLI 的默认路径）才看 ``IP_ENABLE_CRITIC``：
+    关闭时用 ``no_critic``，因为它就是"没有自检"的那张图。
+
+    为什么默认关：60 题消融里 critic 是**负收益**（45.0% vs 48.3%，差 2 题，
+    超出单配置 ±1 题的波动）。关掉不等于删掉——代码、单测、消融入口都在。
+    """
+    if requested is not None:
+        return requested
+    return "full" if settings.enable_critic else "no_critic"
+
+
 def build_deps(
     settings: Settings | None = None,
     *,
     force_template: bool = False,
-    variant: str = "full",
+    variant: str | None = None,
 ) -> Deps:
+    settings = settings or load_settings()
+    variant = resolve_variant(settings, variant)
     if variant not in VARIANTS:
         raise ValueError(f"unknown variant {variant!r}; expected one of {VARIANTS}")
-    settings = settings or load_settings()
     if force_template and settings.llm_mode != "stub":
         # 强制模板模式时必须把 settings 一起降级，否则 /api/health 会报 "api"
         # 并带出一个模型名，而实际跑的是规则模板——对外宣称与事实不符。
@@ -180,7 +196,10 @@ def build_graph(settings: Settings, variant: str = "full") -> Graph:
     `full`     : the system described in the README.
     """
     linker_fn = nodes.linker_wide if variant in ("single", "no_schema") else nodes.linker
-    critic_fn = nodes.critic_pass if variant in ("single", "no_critic") else nodes.critic
+    # 自检关掉时**不注册 critic 节点**，而不是挂一个"恒通过"的替身：
+    # 前者意味着链路上真的没有这一环（trace 里也看不到 critic 行），
+    # 后者会让"关掉了"在 trace 上看起来像"跑过了且通过"——那是自欺。
+    no_critic = variant in ("single", "no_critic")
     max_retries = 0 if variant == "single" else settings.max_retries
 
     graph = Graph(f"askdata-{variant}")
@@ -189,7 +208,8 @@ def build_graph(settings: Settings, variant: str = "full") -> Graph:
     graph.node("sqlcraft", nodes.sqlcraft)
     graph.node("executor", nodes.executor)
     graph.node("analyst", nodes.analyst)
-    graph.node("critic", critic_fn)
+    if not no_critic:
+        graph.node("critic", nodes.critic)
     graph.node("clarify", nodes.clarify)
     graph.node("failure", nodes.failure)
     graph.node("reporter", nodes.reporter)
@@ -203,12 +223,15 @@ def build_graph(settings: Settings, variant: str = "full") -> Graph:
         nodes.make_route_executor(max_retries),
         {"ok": "analyst", "retry": "sqlcraft", "give_up": "failure"},
     )
-    graph.edge("analyst", "critic")
-    graph.branch(
-        "critic",
-        nodes.make_route_critic(settings.max_critiques),
-        {"pass": "reporter", "rework": "analyst", "exhausted": "reporter"},
-    )
+    if no_critic:
+        graph.edge("analyst", "reporter")
+    else:
+        graph.edge("analyst", "critic")
+        graph.branch(
+            "critic",
+            nodes.make_route_critic(settings.max_critiques),
+            {"pass": "reporter", "rework": "analyst", "exhausted": "reporter"},
+        )
     graph.terminal("reporter", "clarify", "failure")
     graph.validate()
     return graph

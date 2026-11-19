@@ -93,6 +93,11 @@ class Settings:
     query_timeout_ms: int = 3000
     max_retries: int = 3
     max_critiques: int = 2
+    # 自检（critic）是否进主链路。**默认关闭**：60 题消融显示它负收益
+    # （full 45.0% vs no_critic 48.3%，差 2 题，超出单配置 ±1 题的波动）。
+    # 代码与单测都保留，随时可用 IP_ENABLE_CRITIC=1 打开——
+    # 和 DocuMind 的 failover 同一个模式：能力留着，默认不用，原因写清。
+    enable_critic: bool = False
     max_steps: int = 24
 
     # Context budget
@@ -146,6 +151,7 @@ def load_settings() -> Settings:
         query_timeout_ms=_env_int("IP_QUERY_TIMEOUT_MS", 3000),
         max_retries=_env_int("IP_MAX_RETRIES", 3),
         max_critiques=_env_int("IP_MAX_CRITIQUES", 2),
+        enable_critic=_env_bool("IP_ENABLE_CRITIC", False),
         max_steps=_env_int("IP_MAX_STEPS", 24),
         context_token_budget=_env_int("IP_CONTEXT_TOKEN_BUDGET", 2600),
         state_db_path=Path(_env("IP_STATE_DB", str(data_dir / "runtime.sqlite"))),

@@ -302,12 +302,16 @@ def test_graph_variants_are_all_runnable():
 
 
 def test_single_variant_drops_retry_and_critic():
-    """The baseline must actually differ, otherwise the ablation table is fiction."""
+    """The baseline must actually differ, otherwise the ablation table is fiction.
+
+    2026-11-19 起"关自检"是**不注册节点**，不再是挂一个恒通过的替身：
+    替身会让 trace 里出现 `critic: pass`，看起来像"跑过了且通过"。
+    """
     settings = Settings(max_retries=3)
     full = build_graph(settings, "full")
     single = build_graph(settings, "single")
     assert full._nodes["critic"].__name__ == "critic"
-    assert single._nodes["critic"].__name__ == "critic_pass"
+    assert "critic" not in single._nodes, "关掉自检时链路上不该有这个节点"
     assert full._nodes["linker"].__name__ == "linker"
     assert single._nodes["linker"].__name__ == "linker_wide"
 

@@ -83,6 +83,14 @@ async def _lifespan(_app: FastAPI):
     settings = load_settings()
     provider = settings.llm_model if settings.effective_mode == "api" else "stub"
     print(f"[llm] provider={provider} mode={settings.effective_mode}", flush=True)
+
+    # 自检节点的开关状态。和 [llm] 那行同一个理由：关掉是默认，但必须可见。
+    # reason 只在关掉时打，方便 grep 到"为什么关"（消融负收益），
+    # 而不是让人误以为忘了开。
+    if settings.enable_critic:
+        print("[agent] critic=on", flush=True)
+    else:
+        print("[agent] critic=off reason=ablation_negative", flush=True)
     yield
 
 

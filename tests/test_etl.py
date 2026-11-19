@@ -19,11 +19,20 @@ SCHEMA_PATH = ROOT / "data" / "schema.sql"
 
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
+# 期望值随仓库内的 `data/source_snapshot.sqlite` 固定（2026-11-19 重定）。
+#
+# 旧值是 fact_comment 1976 / fact_click 9028，比源表少 3 行——当时那 3 行的
+# `created_at` 解析不出来，被 `_load_fact(required_date_field=...)` 丢掉了。
+# 现在源库里**没有一行日期不可解析**（4 张表逐行验过：NULL 0、无法解析 0），
+# 所以 ETL 不丢行才是正确行为，旧期望值是过期数据留下的。
+#
+# 顺带纠正一条长期的误判：这 3 条失败一度被归因为"本地 pandas 3.1.1 vs pin 的 2.3.3"。
+# 用 pandas 2.3.3 的独立 venv 跑同一份快照，结果一样是 9031 / 1979——**和 pandas 无关**。
 EXPECTED_ROWS = {
     "dim_book": 250,
     "fact_rating": 4202,
-    "fact_comment": 1976,
-    "fact_click": 9028,
+    "fact_comment": 1979,
+    "fact_click": 9031,
     "fact_shelf": 2532,
 }
 
@@ -49,11 +58,23 @@ def etl():
     return _load_etl()
 
 
+def _source_db() -> Path:
+    """优先用仓库里的快照，回落到本机毕设源库。
+
+    为什么仓库里要放一份 2.2MB 的快照：源库原本只有作者本机路径
+    （`D:/biyesheji/...`），CI 上根本不存在——那三条 ETL 契约测试在那里
+    连数据都读不到，等于从来没在 CI 上跑过。快照只含 ETL 用到的 7 张表，
+    **不含 `auth_user` / `users_profile`**，行数与源库一致（250 / 4202 / 1979 / 9031 / 2532）。
+    """
+    snapshot = ROOT / "data" / "source_snapshot.sqlite"
+    return snapshot if snapshot.exists() else etl.DEFAULT_SOURCE
+
+
 @pytest.fixture(scope="session")
 def warehouse(etl, tmp_path_factory):
     """会话级建库：产出放在临时目录，不干扰仓库里已提交的 data/warehouse.sqlite。"""
     out = tmp_path_factory.mktemp("warehouse") / "warehouse.sqlite"
-    stats = etl.run(etl.DEFAULT_SOURCE, out, SCHEMA_PATH)
+    stats = etl.run(_source_db(), out, SCHEMA_PATH)
     return out, stats
 
 
@@ -178,7 +199,7 @@ def test_dim_date_columns_consistent(conn):
 def test_etl_is_idempotent(etl, warehouse):
     """连跑两次：第二次覆盖同名文件不报错，各表行数保持不变。"""
     path, stats = warehouse
-    second = etl.run(etl.DEFAULT_SOURCE, path, SCHEMA_PATH)
+    second = etl.run(_source_db(), path, SCHEMA_PATH)
 
     with sqlite3.connect(path) as conn:
         for table in ("dim_book", "dim_author", "dim_date", "fact_rating",
@@ -188,4 +209,4 @@ def test_etl_is_idempotent(etl, warehouse):
 
     assert second["tables"]["dim_book"]["target"] == 250
     # 第二次跑不应该出现「越跑越多」的情况。
-    assert second["tables"]["fact_click"]["target"] == 9028
+    assert second["tables"]["fact_click"]["target"] == 9031
