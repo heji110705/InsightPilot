@@ -14,3 +14,8 @@ _work/
 
 # 评测临时输出
 /tmp/
+
+# 评测产物：每次 run 都入库会把仓库变成数据仓库。只留 baseline ——
+# CI 门禁拿它当锚点，且**只许人工更新**（自动覆盖等于让门禁自己校准成永远绿）。
+eval_runs/*
+!eval_runs/baseline.json

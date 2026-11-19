@@ -78,3 +78,91 @@ jobs:
               sys.exit(f"ETL 通过数不是 13：{m.group(0) if m else '无'}")
           print("ETL 13 条全部通过")
           PY
+
+  # ---------------------------------------------------------------- 问数质量门禁
+  # 只测 push 到主干 / 手动触发：这个 job 真的调模型，20 题约 ¥0.10。
+  #
+  # **为什么不打 http://8.163.90.97:8001（公开 Demo）**：
+  #   1. Demo 有「每 IP 每分钟 3 次、每天 10 次、全站每天 40 次」的防刷闸门
+  #      （app/limits.py），20 题必然撞 429；把 429 记成答错，门禁只会红得莫名其妙。
+  #   2. 全站 40 次/天是**给真实访客**的额度，CI 一次吃掉一半，等于用访客的额度
+  #      给自己做回归。
+  # 所以这里在 runner 本机起同一个 commit 的实例，把闸门与缓存都关掉再打——
+  # 测的是同一份代码，且不污染线上额度。想改成打线上，把 --base-url 换掉即可
+  # （记得同时把 --sleep 调到 21，别撞 3 次/分）。
+  eval_gate:
+    name: 问数可答率门禁（20 题，约 ¥0.10）
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' &&
+       (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      # 没有 key 就只能"跳过"，而跳过等于没测。所以这里直接失败，把话说清楚。
+      - name: 检查评测用的模型 key
+        env:
+          KEY: ${{ secrets.IP_LLM_API_KEY }}
+        run: |
+          if [ -z "${KEY:-}" ]; then
+            echo "缺 secrets.IP_LLM_API_KEY。"
+            echo "这个 job 必须真打模型才能量出可答率；没有 key 时不做假绿。"
+            echo "到仓库 Settings → Secrets and variables → Actions 里加一把再跑。"
+            exit 1
+          fi
+
+      - name: 评测中台自检
+        run: python -m unittest discover -s eval_platform/tests -t .
+
+      # 关掉限流（本机实例不受防刷闸门约束）与缓存（缓存命中会让"复跑"变成"读上次
+      # 的答案"，可答率会凭空稳定，量不到真实波动）。
+      - name: 启动本地实例
+        env:
+          IP_LLM_MODE: api
+          IP_LLM_API_KEY: ${{ secrets.IP_LLM_API_KEY }}
+          IP_LLM_BASE_URL: ${{ secrets.IP_LLM_BASE_URL || 'https://api.deepseek.com/v1' }}
+          IP_RATE_ENABLED: "0"
+          IP_CACHE: "0"
+          IP_STATE_DB: /tmp/eval_state.sqlite
+        run: |
+          python -m uvicorn app.api.server:app --host 127.0.0.1 --port 8000 --log-level warning > /tmp/server.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8000/api/health -o /tmp/health.json 2>/dev/null; then
+              cat /tmp/health.json; exit 0
+            fi
+            sleep 2
+          done
+          echo "实例没起来，日志："; cat /tmp/server.log; exit 1
+
+      - name: 采集 20 题
+        run: |
+          set -euo pipefail
+          python -m eval_platform run --suite insightpilot \
+            --base-url http://127.0.0.1:8000 \
+            --tag "ci-${GITHUB_SHA:0:7}" --limit 20 --sleep 0.5 --yes --quiet \
+            --out eval_runs/ci-latest.json
+
+      # 阈值按「掉几题」：20 题里只有 16~20 道可答题，pp 在这个样本量上没有意义
+      # （掉 1 题就是 5~6pp）。宽容 2 题，与实测的复跑波动对齐。
+      - name: 门禁（可答数掉满 2 题就失败）
+        run: python -m eval_platform gate eval_runs/baseline.json eval_runs/ci-latest.json --max-drop-n 2
+
+      - name: 上传本次 run（失败也传，方便看哪几题新错）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-run-${{ github.sha }}
+          path: eval_runs/ci-latest.json
+          if-no-files-found: warn
