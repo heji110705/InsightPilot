@@ -304,6 +304,7 @@ def ask(
             "elapsed_ms": report.elapsed_ms,
             "trace_id": final_state.turn_id,
             "mode": settings.effective_mode,
+            "model_used": settings.llm_model if settings.effective_mode == "api" else "stub",
         }
     )
     answer = _flag_void_filter(answer, deps)

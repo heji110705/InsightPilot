@@ -177,6 +177,11 @@ class Answer(BaseModel):
     elapsed_ms: int = 0
     trace_id: str = ""
     mode: str = "stub"
+    # 这次请求实际配置的模型名（mode=stub 时为 "stub"）。
+    # 与 DocuMind 的 model_used 对齐：换模型/换端点后，先用它确认"到底连的是哪家"。
+    # 注意边界：单个节点失败时可能回落规则推理（评测里会统计 fallback 次数），
+    # 所以它表示"链路上配置的模型"，不是"每个节点都用过它"。
+    model_used: str = ""
     status: Literal["ok", "clarify", "failed", "rejected"] = "ok"
     message: str = ""
 

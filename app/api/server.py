@@ -24,6 +24,7 @@ import os
 import queue
 import sqlite3
 import time
+from contextlib import asynccontextmanager
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, AsyncIterator, Callable
@@ -69,6 +70,22 @@ _MEDIA_TYPES = {
 # 等于给访客一张"这里还能这么调"的地图。需要时显式 IP_DOCS=1 打开。
 _DOCS_ON = os.environ.get("IP_DOCS", "0").strip() == "1"
 
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    """启动时打一行"用哪个模型"，格式与 DocuMind 对齐。
+
+    为什么要有这一行：模型是 `.env` 里最容易过期的一行——换了模型但容器没重启、
+    或 `.env` 改了却没生效，界面上都看不出来，只有答得慢/答错时才被发现。
+    打出来之后，`docker logs | head` 就能确认"这一版到底连的是哪家"。
+    """
+    from app.core.config import load_settings
+
+    settings = load_settings()
+    provider = settings.llm_model if settings.effective_mode == "api" else "stub"
+    print(f"[llm] provider={provider} mode={settings.effective_mode}", flush=True)
+    yield
+
+
 app = FastAPI(
     title="InsightPilot",
     version="1.0.0",
@@ -76,6 +93,7 @@ app = FastAPI(
     docs_url="/docs" if _DOCS_ON else None,
     redoc_url=None,
     openapi_url="/openapi.json" if _DOCS_ON else None,
+    lifespan=_lifespan,
 )
 
 # ---------------------------------------------------------------------------
