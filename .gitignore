@@ -19,3 +19,8 @@ _work/
 # CI 门禁拿它当锚点，且**只许人工更新**（自动覆盖等于让门禁自己校准成永远绿）。
 eval_runs/*
 !eval_runs/baseline.json
+
+# 私钥 —— 绝不入库
+id_ed25519*
+*.pem
+*.key
